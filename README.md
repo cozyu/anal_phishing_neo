@@ -1,6 +1,6 @@
 # PhishGuard - 피싱 사이트 분석 플랫폼
 
-피싱 사이트 비교 분석 및 도메인 모니터링을 위한 웹 기반 플랫폼.
+피싱 사이트 비교 분석, 도메인 모니터링, 유사 사이트 검색을 위한 웹 기반 플랫폼.
 
 ## 주요 기능
 
@@ -34,10 +34,25 @@
 - **백그라운드 실행**: 검색 중 페이지 이동 가능, 작업 큐 지원
 - **작업 취소**: 진행 중 WHOIS 조회 루프에서 즉시 취소 가능
 
-### 3. 분석 이력 (분석이력)
-- 비교 분석/도메인 모니터링 결과가 Supabase에 자동 저장
+### 3. 유사 사이트 검색 (유사사이트검색)
+- URL을 입력하면 urlscan.io **Structure Search API** (Pro)로 구조적으로 유사한 사이트를 검색
+- **워크플로우**: URL 스캔 제출 → UUID 획득 → Structure Search API 호출
+- **API 엔드포인트**: `GET /api/v1/pro/result/{uuid}/similar/`
+  - `threshold`: 유사도 기준 (`"75%"` 형식 문자열, 1~100% 키보드 입력)
+  - `q`: ElasticSearch 쿼리 (날짜 필터 `date:>YYYY-MM-DD` 등)
+  - `size`: 결과 수 제한
+- **유사도 기준**: 기본값 75%, 1~100% 범위에서 직접 입력 가능
+- **조회 기간**: 기본값 30일, 1~365일 범위에서 조정 가능
+- **결과 표시**: 3열 카드 레이아웃 (스크린샷, 도메인, URL, IP, 국가, 서버, ASN, 스캔시각)
+- **링크**: 각 결과에서 pro.urlscan.io 결과 페이지로 이동
+- 12건 단위 페이지네이션
+- **백그라운드 실행**: 검색 중 페이지 이동 가능, 작업 큐 + 취소 지원
+- 이력 자동 저장 (`[유사검색]` 태그)
+
+### 4. 분석 이력 (분석이력)
+- 비교 분석/도메인 모니터링/유사 사이트 검색 결과가 Supabase에 자동 저장
 - API 재호출 없이 이전 결과 재확인 가능
-- 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링
+- 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링 / 유사 사이트 검색
 - 이력 목록 (10건 단위 페이지네이션) + 상세 보기 + 삭제 기능
 - 카테고리 전환 시 상세 보기 자동 초기화 (목록으로 복귀)
 - 모든 시간은 KST(UTC+9)로 표시, DB 저장은 UTC
@@ -49,7 +64,7 @@
 - **AI 분석**: Google Gemini API (`google-genai` 패키지)
 - **도메인 검색**: VirusTotal Intelligence Search API
 - **도메인 상세 조회**: python-whois (공개 WHOIS 서버, 무료)
-- **URL 스캔**: urlscan.io API
+- **URL 스캔/유사검색**: urlscan.io API + Structure Search Pro API
 - **이력 저장**: Supabase (PostgreSQL)
 - **설정 관리**: `.env` (로컬) / Streamlit Secrets (클라우드)
 - **비동기 처리**: `@st.fragment(run_every="1s")` + `threading` 기반 작업 큐
@@ -74,11 +89,12 @@ anal_phishing_neo/
 │   ├── 0_home.py               # 홈 (기능 소개, Supabase 연결 상태)
 │   ├── 1_비교분석.py            # 비교 분석 (파일 업로드 / URL 입력, 작업 큐)
 │   ├── 2_도메인모니터링.py      # 도메인 모니터링 (VT 검색 + WHOIS 조회, 작업 큐)
+│   ├── 4_유사사이트검색.py      # 유사 사이트 검색 (urlscan Structure Search Pro)
 │   └── 3_분석이력.py            # 분석 이력 (Supabase 조회/삭제, 상세 보기)
 │
 ├── analyzer.py                 # 비교 분석 엔진 (규칙 비교 + Gemini AI 호출)
 ├── domain_monitor.py           # 도메인 모니터링 (VT Intelligence Search + python-whois)
-├── urlscan_client.py           # urlscan.io API 클라이언트
+├── urlscan_client.py           # urlscan.io API 클라이언트 (스캔 + Structure Search)
 ├── db.py                       # Supabase CRUD (이력 저장/조회/삭제)
 ├── config.py                   # 설정 로더 (Streamlit Secrets → .env 폴백)
 ├── background.py               # 백그라운드 작업 큐 (BackgroundTask, TaskQueue)
@@ -94,7 +110,7 @@ anal_phishing_neo/
 |--------|------|------|
 | `GEMINI_API_KEY` | Google Gemini API 키 | O |
 | `VT_API_KEY` | VirusTotal API 키 (도메인 모니터링용) | O |
-| `URLSCAN_API_KEY` | urlscan.io API 키 (URL 비교 분석용) | O |
+| `URLSCAN_API_KEY` | urlscan.io API 키 (URL 비교 분석 + 유사 사이트 검색, Pro 필요) | O |
 | `SUPABASE_URL` | Supabase 프로젝트 URL | O |
 | `SUPABASE_KEY` | Supabase anon/service_role 키 | O |
 | `WHOISXML_API_KEY` | WhoisXML API 키 (현재 미사용, 레거시) | X |
@@ -157,6 +173,7 @@ streamlit run app.py
 - **페이지 진입 시 결과 초기화**: 다른 페이지에서 돌아오면 이전 결과 자동 초기화 (같은 페이지 rerun에서는 유지)
 - **이력 상세 보기**: 카테고리 전환 시 `on_change` 콜백으로 자동 초기화
 - **시간 표시**: DB 저장은 UTC, 표시는 모두 KST(UTC+9) 변환
+- **홈 페이지**: 2x2 카드형 레이아웃 (CSS border/padding/border-radius로 구분)
 
 ### 데이터
 - **Supabase**: 이력 저장 (history 테이블, JSONB 데이터 컬럼)
@@ -178,3 +195,5 @@ streamlit run app.py
 - 2026-03-24: 이력 페이지 카테고리 전환 시 상세 초기화
 - 2026-03-24: 분석 모드 구분 ([파일]/[URL]), 스캔 시각 KST 표시
 - 2026-03-24: st.form으로 Enter 키 즉시 검색 지원
+- 2026-03-25: 유사 사이트 검색 기능 추가 (urlscan Structure Search Pro API)
+- 2026-03-25: 홈 페이지 2x2 카드형 UI 개선
