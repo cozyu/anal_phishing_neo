@@ -14,11 +14,13 @@
   - 유사도 점수 산출 (높음/중간/낮음 색상 구분)
   - 스캔 시각 (KST 변환) 표시
 - **Gemini AI 심층 분석**: 인프라 연관성, 피싱 킷 유사성, 공격자 프로파일링, 타겟 분석, 위험도 평가, 향후 탐지 전략
+  - **공유 해시 특이도 분석**: 공유 리소스 해시를 특이도 점수로 정렬, 상위 15개 후보의 urlscan.io 출현 횟수 조회 → AI가 TOP 10 개별 분석
   - 사용된 Gemini 모델명 표시
-  - 모델 폴백: gemini-3.0-flash → gemini-2.5-flash → gemini-3.1-flash-lite → gemini-2.5-flash-lite
+  - 모델 폴백: gemini-3-flash-preview → gemini-2.5-flash → gemini-3.1-flash-lite-preview → gemini-2.5-flash-lite
 - AI 프롬프트는 `prompt_config.yaml`에서 별도 관리 (분석 항목 추가/수정 가능)
 - **백그라운드 실행**: 분석 중 페이지 이동 가능, 작업 큐 지원 (다중 분석 순차 처리)
 - **작업 취소**: 진행 중인 작업과 대기 중인 작업 개별 취소 가능
+- **IP 누락 대응**: 스캔 결과에 IP 정보가 없을 때 urlscan.io 기존 스캔 데이터로 자동 폴백 분석
 - **이력 구분**: [파일] / [URL] 태그로 분석 방법 구분
 - **IPv6 제외**: 모든 분석에서 IPv4만 사용
 
@@ -42,7 +44,8 @@
   - `q`: ElasticSearch 쿼리 (날짜 필터 `date:>YYYY-MM-DD` 등)
   - `size`: 결과 수 제한
 - **유사도 기준**: 기본값 75%, 1~100% 범위에서 직접 입력 가능
-- **조회 기간**: 기본값 30일, 1~365일 범위에서 조정 가능
+- **조회 기간**: 기본값 10일, 1~365일 범위에서 조정 가능
+- **스캔 폴백**: 새 스캔 제출 실패 시 기존 urlscan.io 스캔 결과로 자동 폴백
 - **결과 표시**: 3열 카드 레이아웃 (스크린샷, 도메인, URL, IP, 국가, 서버, ASN, 스캔시각)
 - **링크**: 각 결과에서 pro.urlscan.io 결과 페이지로 이동
 - 12건 단위 페이지네이션
@@ -53,7 +56,7 @@
 - 비교 분석/도메인 모니터링/유사 사이트 검색 결과가 Supabase에 자동 저장
 - API 재호출 없이 이전 결과 재확인 가능
 - 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링 / 유사 사이트 검색
-- 이력 목록 (10건 단위 페이지네이션) + 상세 보기 + 삭제 기능
+- 이력 목록 (10건 단위 페이지네이션, 시퀀스 번호 표시) + 상세 보기 + 삭제 기능
 - 카테고리 전환 시 상세 보기 자동 초기화 (목록으로 복귀)
 - 모든 시간은 KST(UTC+9)로 표시, DB 저장은 UTC
 
@@ -94,7 +97,7 @@ anal_phishing_neo/
 │
 ├── analyzer.py                 # 비교 분석 엔진 (규칙 비교 + Gemini AI 호출)
 ├── domain_monitor.py           # 도메인 모니터링 (VT Intelligence Search + python-whois)
-├── urlscan_client.py           # urlscan.io API 클라이언트 (스캔 + Structure Search)
+├── urlscan_client.py           # urlscan.io API 클라이언트 (스캔 + Structure Search + 해시 검색)
 ├── db.py                       # Supabase CRUD (이력 저장/조회/삭제)
 ├── config.py                   # 설정 로더 (Streamlit Secrets → .env 폴백)
 ├── background.py               # 백그라운드 작업 큐 (BackgroundTask, TaskQueue)
@@ -179,6 +182,7 @@ streamlit run app.py
 - **Supabase**: 이력 저장 (history 테이블, JSONB 데이터 컬럼)
 - **API 로깅**: `api_logger.py`로 모든 외부 API 호출을 `logs/` 디렉토리에 일별 파일로 기록 (요청/응답/오류, 긴 데이터 2000자 truncate, API 키 미포함)
 - **IPv6 제외**: urlscan.io 결과에서 IPv6 IP 필터링, 메인 IP가 IPv6인 경우 IPv4 목록에서 대체
+- **시퀀스 번호**: 카테고리별 이력에 순차 번호 부여 (history 테이블 seq 컬럼)
 
 ## 변경 이력
 
@@ -197,3 +201,12 @@ streamlit run app.py
 - 2026-03-24: st.form으로 Enter 키 즉시 검색 지원
 - 2026-03-25: 유사 사이트 검색 기능 추가 (urlscan Structure Search Pro API)
 - 2026-03-25: 홈 페이지 2x2 카드형 UI 개선
+- 2026-03-27: 공유 해시 특이도 분석 (파일명/MIME/크기 매핑, 특이도 점수 정렬, urlscan 출현 횟수 조회)
+- 2026-03-27: Gemini 프롬프트 강화 (TOP 10 해시 개별 분석, 도메인명 보고서 제목, 생략 금지)
+- 2026-03-27: Gemini 모델 업데이트 (gemini-3-flash-preview, gemini-3.1-flash-lite-preview)
+- 2026-03-27: IP 누락 시 기존 urlscan 스캔 데이터로 폴백 분석
+- 2026-03-27: 유사 사이트 검색 스캔 실패 시 기존 결과 폴백
+- 2026-03-27: URL 자동 프로토콜 추가 (https://)
+- 2026-03-27: 이력 시퀀스 번호 (카테고리별 순차 번호, DB seq 컬럼)
+- 2026-03-27: 분석이력에 유사 사이트 검색 카테고리 추가 (상세 테이블 뷰)
+- 2026-03-27: 유사 사이트 검색 기본 조회 기간 30일 → 10일

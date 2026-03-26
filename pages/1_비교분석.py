@@ -3,7 +3,7 @@
 import json
 import streamlit as st
 from analyzer import extract_metadata, compare_sites, analyze_with_gemini
-from urlscan_client import scan_and_get_result
+from urlscan_client import scan_and_get_result, search_existing_scan, get_scan_result
 from db import save_history
 from background import BackgroundTask, TaskQueue
 
@@ -46,7 +46,10 @@ def _analysis_bg(meta1, meta2, mode="file", task=None):
         return None
     if task:
         task.set_progress("Gemini AI 심층 분석 중...")
-    ai_text, ai_model = analyze_with_gemini(meta1, meta2, result)
+    ai_text, ai_model = analyze_with_gemini(
+        meta1, meta2, result,
+        progress_callback=lambda msg: task.set_progress(msg) if task else None,
+    )
 
     if task and task.cancelled:
         return None
@@ -91,6 +94,65 @@ def _url_scan_and_analysis_bg(url1, url2, task=None):
 
     meta1 = extract_metadata(data1)
     meta2 = extract_metadata(data2)
+
+    # IP 정보 누락 체크
+    no_ip_sites = []
+    if not meta1.get("ip"):
+        no_ip_sites.append({"url": url1, "domain": meta1.get("domain", url1)})
+    if not meta2.get("ip"):
+        no_ip_sites.append({"url": url2, "domain": meta2.get("domain", url2)})
+
+    if no_ip_sites:
+        return {
+            "type": "no_ip",
+            "no_ip_sites": no_ip_sites,
+            "url1": url1,
+            "url2": url2,
+            "meta1": meta1,
+            "meta2": meta2,
+        }
+
+    return _analysis_bg(meta1, meta2, mode="url", task=task)
+
+
+def _retry_with_existing_bg(url1, url2, meta1, meta2, task=None):
+    """기존 urlscan 데이터로 재분석"""
+    from urlscan_client import _extract_domain
+
+    if not meta1.get("ip"):
+        domain = meta1.get("domain") or _extract_domain(url1)
+        if task:
+            task.set_progress(f"기존 스캔 결과 검색 중: {domain}")
+        scan_id = search_existing_scan(domain)
+        if not scan_id:
+            raise Exception(f"{domain}의 기존 스캔 결과를 찾을 수 없습니다.")
+        if task:
+            task.set_progress(f"기존 스캔 데이터 로드 중: {scan_id[:8]}...")
+        data = get_scan_result(scan_id)
+        meta1 = extract_metadata(data)
+        if not meta1.get("ip"):
+            raise Exception(f"{domain}의 기존 스캔 결과에도 IP 정보가 없습니다.")
+
+    if task and task.cancelled:
+        return None
+
+    if not meta2.get("ip"):
+        domain = meta2.get("domain") or _extract_domain(url2)
+        if task:
+            task.set_progress(f"기존 스캔 결과 검색 중: {domain}")
+        scan_id = search_existing_scan(domain)
+        if not scan_id:
+            raise Exception(f"{domain}의 기존 스캔 결과를 찾을 수 없습니다.")
+        if task:
+            task.set_progress(f"기존 스캔 데이터 로드 중: {scan_id[:8]}...")
+        data = get_scan_result(scan_id)
+        meta2 = extract_metadata(data)
+        if not meta2.get("ip"):
+            raise Exception(f"{domain}의 기존 스캔 결과에도 IP 정보가 없습니다.")
+
+    if task and task.cancelled:
+        return None
+
     return _analysis_bg(meta1, meta2, mode="url", task=task)
 
 
@@ -144,7 +206,10 @@ def _queue_status():
         last = completed[-1]
         if last.error:
             st.error(f"분석 오류: {last.error}")
+        elif last.result and last.result.get("type") == "no_ip":
+            st.session_state["compare_no_ip"] = last.result
         elif last.result:
+            st.session_state.pop("compare_no_ip", None)
             st.session_state["compare_result"] = last.result["result"]
             st.session_state["compare_meta"] = last.result["meta"]
             st.session_state["ai_analysis"] = last.result["ai_analysis"]
@@ -183,6 +248,35 @@ def _queue_status():
 
 
 _queue_status()
+
+
+# --- IP 없음 알림 및 재분석 제안 ---
+if "compare_no_ip" in st.session_state:
+    no_ip_data = st.session_state["compare_no_ip"]
+    no_ip_sites = no_ip_data["no_ip_sites"]
+
+    st.markdown("---")
+    for site in no_ip_sites:
+        st.warning(f"⚠️ **{site['domain']}** - IP 정보가 없어 사이트에 접근할 수 없습니다.")
+
+    st.info("urlscan.io에 기존 저장된 스캔 데이터로 분석할 수 있습니다.")
+    col_retry, col_cancel = st.columns([1, 3])
+    with col_retry:
+        if st.button("기존 데이터로 분석", type="primary", key="btn_retry_existing"):
+            name = f"[재분석] {no_ip_data['url1']} vs {no_ip_data['url2']}"
+            task = BackgroundTask(
+                name=name,
+                target=_retry_with_existing_bg,
+                args=(no_ip_data["url1"], no_ip_data["url2"],
+                      no_ip_data["meta1"], no_ip_data["meta2"]),
+            )
+            queue.add(task)
+            st.session_state.pop("compare_no_ip", None)
+            st.rerun()
+    with col_cancel:
+        if st.button("취소", key="btn_cancel_no_ip"):
+            st.session_state.pop("compare_no_ip", None)
+            st.rerun()
 
 
 # --- 결과 표시 ---

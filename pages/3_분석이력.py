@@ -121,6 +121,30 @@ def _render_detail(category):
             st.caption(f"AI 모델: {ai_model}")
             st.markdown(f"<div class='report-section'>\n\n{ai}\n\n</div>", unsafe_allow_html=True)
 
+    elif category == "similar":
+        st.markdown(f"**대상 URL**: `{data.get('url', 'N/A')}` | **유사도 기준**: {data.get('threshold', 'N/A')}% | **결과**: {data.get('total', 0)}건")
+
+        similar_results = data.get("results", [])
+        if similar_results:
+            table_md = "| # | 도메인 | URL | IP | 국가 | 스캔시각 |\n"
+            table_md += "|---|--------|-----|-----|------|--------|\n"
+            for i, item in enumerate(similar_results):
+                page_info = item.get("page", {})
+                task_info = item.get("task", {})
+                domain = _esc(page_info.get("domain", "N/A"))
+                page_url = _esc(page_info.get("url", "N/A"))
+                if len(page_url) > 60:
+                    page_url = page_url[:57] + "..."
+                ip = _esc(page_info.get("ip", "N/A"))
+                country = _esc(page_info.get("country", "N/A"))
+                scan_time = _to_kst(task_info.get("time", ""))
+                table_md += f"| {i+1} | {domain} | {page_url} | {ip} | {country} | {scan_time} |\n"
+            st.markdown(f"<div class='history-table'>\n\n{table_md}\n\n</div>", unsafe_allow_html=True)
+        else:
+            st.info("유사 사이트 결과가 없습니다.")
+
+        return True
+
     elif category == "domains":
         st.markdown(f"**키워드**: {data.get('keyword', 'N/A')}")
 
@@ -171,7 +195,10 @@ def _render_list(category):
     st.markdown(f"**총 {len(history_list)}건**")
 
     for item in history_list[start:end]:
-        col_title, col_date, col_actions = st.columns([4, 2, 2])
+        seq = item.get("seq", "")
+        col_num, col_title, col_date, col_actions = st.columns([0.5, 4, 2, 2])
+        with col_num:
+            st.text(f"#{seq}" if seq else "-")
         with col_title:
             st.markdown(f"**{item['title']}**")
         with col_date:
@@ -203,14 +230,20 @@ def _render_list(category):
 # --- 카테고리 선택 ---
 def _on_tab_change():
     """탭 전환 시 상세 보기 초기화"""
-    for _k in ["view_compare_id", "view_domains_id"]:
+    for _k in ["view_compare_id", "view_domains_id", "view_similar_id"]:
         st.session_state.pop(_k, None)
 
 
+_CATEGORY_LABELS = {
+    "compare": "비교 분석",
+    "domains": "도메인 모니터링",
+    "similar": "유사 사이트 검색",
+}
+
 selected = st.radio(
     "카테고리",
-    options=["compare", "domains"],
-    format_func=lambda x: "비교 분석" if x == "compare" else "도메인 모니터링",
+    options=list(_CATEGORY_LABELS.keys()),
+    format_func=lambda x: _CATEGORY_LABELS[x],
     horizontal=True,
     key="history_tab",
     on_change=_on_tab_change,

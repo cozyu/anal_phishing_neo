@@ -15,14 +15,31 @@ def _get_client():
     return create_client(url, key)
 
 
+def _next_seq(client, category):
+    """카테고리별 다음 시퀀스 번호 조회"""
+    result = (
+        client.table("history")
+        .select("seq")
+        .eq("category", category)
+        .order("seq", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if result.data and result.data[0].get("seq"):
+        return result.data[0]["seq"] + 1
+    return 1
+
+
 def save_history(category, title, data):
     """분석 결과 저장"""
     client = _get_client()
     if not client:
         return None
+    seq = _next_seq(client, category)
     record = {
         "id": str(uuid.uuid4()),
         "category": category,
+        "seq": seq,
         "title": title,
         "data": data,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -38,7 +55,7 @@ def get_history_list(category) -> list[dict]:
         return []
     result = (
         client.table("history")
-        .select("id, category, title, created_at")
+        .select("id, category, seq, title, created_at")
         .eq("category", category)
         .order("created_at", desc=True)
         .execute()

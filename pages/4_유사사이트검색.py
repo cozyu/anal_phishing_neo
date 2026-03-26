@@ -102,7 +102,7 @@ with st.form("similar_form"):
             "조회 기간 (일)",
             min_value=1,
             max_value=365,
-            value=30,
+            value=10,
         )
     submitted = st.form_submit_button("검색")
 

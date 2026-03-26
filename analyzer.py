@@ -11,9 +11,9 @@ from config import get_config
 from api_logger import log_request, log_response, log_error
 
 GEMINI_MODELS = [
-    "gemini-3.0-flash",
+    "gemini-3-flash-preview",
     "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash-lite",
 ]
 
@@ -74,6 +74,41 @@ def extract_metadata(scan_data):
     if ":" in main_ip:  # 메인 IP가 IPv6이면 IPv4 목록에서 대체
         main_ip = ipv4_list[0] if ipv4_list else ""
 
+    # 해시-파일명 매핑 추출
+    hash_files = {}
+    for req in scan_data.get("data", {}).get("requests", []):
+        h = req.get("response", {}).get("hash", "")
+        if not h:
+            continue
+        req_url = req.get("request", {}).get("request", {}).get("url", "")
+        mime = (req.get("response", {}).get("response", {}).get("mimeType", "")
+                or req.get("response", {}).get("response", {}).get("headers", {}).get("Content-Type", ""))
+        size = req.get("response", {}).get("size", 0)
+        # URL에서 파일명 추출
+        if req_url and not req_url.startswith("data:"):
+            from urllib.parse import urlparse
+            path = urlparse(req_url).path
+            filename = path.rsplit("/", 1)[-1] if path and path != "/" else ""
+        else:
+            filename = ""
+        # 파일명이 없으면 MIME 타입으로 유형 표시
+        if not filename:
+            mime_clean = mime.split(";")[0].strip().lower() if mime else ""
+            mime_labels = {
+                "text/html": "HTML document",
+                "application/json": "JSON data",
+                "application/xml": "XML data",
+                "text/plain": "text file",
+            }
+            filename = mime_labels.get(mime_clean, f"({mime_clean})" if mime_clean else "(unknown)")
+        if h not in hash_files:
+            hash_files[h] = {
+                "url": req_url[:200] if req_url else "",
+                "filename": filename,
+                "mime": mime.split(";")[0].strip() if mime else "",
+                "size": size,
+            }
+
     return {
         "url": task.get("url", ""),
         "scan_time": task.get("time", ""),
@@ -87,6 +122,7 @@ def extract_metadata(scan_data):
         "ips": ipv4_list,
         "domains": lists.get("domains", []),
         "hashes": lists.get("hashes", []),
+        "hash_files": hash_files,
         "urls": lists.get("urls", []),
         "certificates": certs,
         "technologies": techs,
@@ -175,15 +211,62 @@ def compare_sites(meta1, meta2):
     sim = SequenceMatcher(None, path1, path2).ratio()
     add("URL 경로", f"유사도 {sim:.0%}", path1 or "/", path2 or "/", int(sim * 10), 10)
 
-    # 공유 리소스 해시
+    # 공유 리소스 해시 (특이한 파일 우선 정렬)
     h1, h2 = set(meta1["hashes"]), set(meta2["hashes"])
+    hf1 = meta1.get("hash_files", {})
+    hf2 = meta2.get("hash_files", {})
     shared_hashes = h1 & h2
     total = max(len(h1), len(h2), 1)
     if shared_hashes:
+        # 특이도 점수: 범용 리소스(html, css, 일반 이미지, 유명 라이브러리)는 낮게
+        common_mimes = {"text/html", "text/css", "image/png", "image/jpeg", "image/gif", "image/svg+xml", "image/webp"}
+        common_libs = {"jquery", "bootstrap", "swiper", "font-awesome", "normalize", "reset.css"}
+        def _uniqueness(h):
+            info = hf1.get(h) or hf2.get(h) or {}
+            mime = info.get("mime", "")
+            fname = info.get("filename", "").lower()
+            score = 10  # 기본 점수
+            # 범용 MIME 감점
+            if mime in common_mimes:
+                score -= 3
+            # 유명 라이브러리 감점
+            if any(lib in fname for lib in common_libs):
+                score -= 4
+            # 고유 파일명(해시 포함, 커스텀 JS 등) 가점
+            if fname and "." in fname:
+                ext = fname.rsplit(".", 1)[-1]
+                if ext in ("js", "woff", "woff2", "ttf", "json"):
+                    score += 3
+                if any(c.isdigit() for c in fname) and len(fname) > 15:
+                    score += 2  # 해시가 포함된 번들 파일
+            # 파일명 없는 경우 감점
+            if fname.startswith("(") or not fname:
+                score -= 5
+            return score
+        sorted_shared = sorted(shared_hashes, key=_uniqueness, reverse=True)
+
+        shared_details = []
+        for h in sorted_shared:
+            info = hf1.get(h) or hf2.get(h) or {}
+            fname = info.get("filename", "(unknown)")
+            mime = info.get("mime", "")
+            size = info.get("size", 0)
+            parts = [fname]
+            if mime:
+                parts.append(mime)
+            if size:
+                parts.append(f"{size:,}B")
+            label = f"{h} ({', '.join(parts)})"
+            shared_details.append(label)
+
         ratio = len(shared_hashes) / total
-        add("공유 리소스 해시", f"{len(shared_hashes)}개 일치", f"{len(h1)}개", f"{len(h2)}개 (공유 {ratio:.0%})", min(int(ratio * 15), 15), 15)
+        s1 = f"{len(h1)}개"
+        s2 = f"{len(h2)}개 (공유 {ratio:.0%})"
+        add("공유 리소스 해시", f"{len(shared_hashes)}개 일치", s1, s2, min(int(ratio * 15), 15), 15)
+        shared_hash_detail_list = shared_details
     else:
         add("공유 리소스 해시", "없음", f"{len(h1)}개", f"{len(h2)}개", 0, 15)
+        shared_hash_detail_list = []
 
     # 기술 스택
     t1 = {t["app"] for t in meta1.get("technologies", []) if t.get("app")}
@@ -259,17 +342,50 @@ def compare_sites(meta1, meta2):
         "score": total_score,
         "meta1": meta1,
         "meta2": meta2,
+        "shared_hash_details": shared_hash_detail_list,
     }
 
 
-def analyze_with_gemini(meta1, meta2, comparison_result):
+def analyze_with_gemini(meta1, meta2, comparison_result, progress_callback=None):
     """Gemini AI 심층 분석"""
+    from urlscan_client import search_hash_counts
+
     config = load_prompt_config()
     api_key = get_config("GEMINI_API_KEY")
     if not api_key:
         return "GEMINI_API_KEY가 설정되지 않았습니다."
 
     client = genai.Client(api_key=api_key)
+
+    # 공유 해시 상세 + 출현 횟수 조회 (특이도 상위 15개 후보만)
+    shared_hash_details = comparison_result.get("shared_hash_details", [])
+    hash_counts = {}
+    CANDIDATE_COUNT = 15
+    if shared_hash_details:
+        # 특이도 점수 상위 15개 후보만 urlscan 검색 (이미 특이도순 정렬됨)
+        candidate_hashes = [
+            d.split(" ")[0] for d in shared_hash_details[:CANDIDATE_COUNT] if len(d) >= 64
+        ]
+        if progress_callback:
+            progress_callback(f"특이 해시 상위 {len(candidate_hashes)}개 출현 횟수 조회 중...")
+        hash_counts = search_hash_counts(candidate_hashes, progress_callback=progress_callback)
+
+    # 상위 후보는 출현 횟수순 정렬, 나머지는 기존 특이도순 유지
+    if hash_counts:
+        top_details = []
+        rest_details = []
+        for i, detail in enumerate(shared_hash_details):
+            h = detail.split(" ")[0] if len(detail) >= 64 else ""
+            count = hash_counts.get(h, -1)
+            if i < CANDIDATE_COUNT and count >= 0:
+                top_details.append((detail, count))
+            else:
+                rest_details.append((detail, -1))
+        # 상위 후보: 출현 횟수 오름차순 (적은 순 = 특이한 순)
+        top_details.sort(key=lambda x: x[1])
+        sorted_details = top_details + rest_details
+    else:
+        sorted_details = [(d, -1) for d in shared_hash_details]
 
     # 프롬프트 구성
     parts = [config["system_role"], "\n"]
@@ -279,6 +395,15 @@ def analyze_with_gemini(meta1, meta2, comparison_result):
 
     for comp in comparison_result["comparisons"]:
         parts.append(f"- {comp['name']}: {comp['status']} (사이트1: {comp.get('site1', 'N/A')} / 사이트2: {comp.get('site2', 'N/A')})\n")
+
+    # 공유 해시 상세 + 출현 횟수
+    if sorted_details:
+        parts.append("\n## 공유 리소스 해시 상세 (urlscan.io 출현 횟수 포함, 특이한 순)\n")
+        for i, (detail, count) in enumerate(sorted_details):
+            count_str = f"출현: {count:,}건" if count >= 0 else "출현: 조회실패"
+            rank = f"[TOP {i+1}] " if i < 10 else ""
+            parts.append(f"- {rank}{detail} — {count_str}\n")
+        parts.append("\n**[TOP 1~10]으로 표시된 해시가 가장 특이한 상위 10개입니다. 각각에 대해 개별적으로 왜 탐지 지표로서 가치가 있는지 분석해주세요.**\n")
 
     parts.append("\n## 분석 항목\n")
     for section in config["analysis_sections"]:

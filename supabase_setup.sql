@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category TEXT NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
     title TEXT NOT NULL,
     data JSONB NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
