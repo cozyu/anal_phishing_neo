@@ -48,6 +48,17 @@ with col3:
 
 with col4:
     st.markdown("""<div class="feature-card">
+        <h4>\U0001F511 키워드 모니터링</h4>
+        <p>웹사이트 제목 키워드를 등록하면 urlscan.io + VirusTotal에서 동일 키워드 사이트를 검색합니다.</p>
+        <ul><li>URLScan / VirusTotal 개별 검색</li><li>URL 목록 복사</li></ul>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+
+col5, col6 = st.columns(2, gap="medium")
+
+with col5:
+    st.markdown("""<div class="feature-card">
         <h4>\U0001F4CB 분석 이력</h4>
         <p>이전 분석 결과를 다시 확인하거나 삭제할 수 있습니다.</p>
         <ul><li>Supabase 저장</li><li>API 재호출 불필요</li></ul>

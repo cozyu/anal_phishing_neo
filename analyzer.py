@@ -422,7 +422,7 @@ def analyze_with_gemini(meta1, meta2, comparison_result, progress_callback=None)
                 model=model_name,
                 contents=prompt,
             )
-            log_response("gemini", 200, {"model": model_name, "response_length": len(response.text)})
+            log_response("gemini", 200, {"model": model_name, "response_length": len(response.text or "")})
             return response.text, model_name
         except Exception as e:
             log_error("gemini", f"model={model_name}, error={e}")

@@ -89,6 +89,25 @@ def search_hash_counts(hash_list, progress_callback=None):
     return results
 
 
+def search_by_title(keyword, size=100, days=30, since_date=None):
+    """urlscan.io Search API로 페이지 타이틀 키워드 검색.
+    since_date가 주어지면 해당 날짜 이후만 검색 (YYYY-MM-DD 형식)."""
+    from datetime import datetime, timedelta
+    api_key = get_config("URLSCAN_API_KEY")
+    headers = {"API-Key": api_key} if api_key else {}
+    if not since_date:
+        since_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    params = {"q": f'page.title:"{keyword}" date:>{since_date}', "size": size}
+    endpoint = f"{URLSCAN_API}/search/"
+
+    log_request("urlscan.title_search", "GET", endpoint, params=params)
+    resp = requests.get(endpoint, headers=headers, params=params, timeout=30)
+    log_response("urlscan.title_search", resp.status_code,
+                 {"total": resp.json().get("total", 0)} if resp.ok else resp.text)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def scan_and_get_result(url, progress_callback=None):
     """URL 스캔 제출 후 결과 대기"""
     submission = submit_scan(url)

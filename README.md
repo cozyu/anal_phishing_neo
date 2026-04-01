@@ -52,7 +52,21 @@
 - **백그라운드 실행**: 검색 중 페이지 이동 가능, 작업 큐 + 취소 지원
 - 이력 자동 저장 (`[유사검색]` 태그)
 
-### 4. 분석 이력 (분석이력)
+### 4. 키워드 모니터링 (키워드모니터링)
+- 웹사이트 제목 키워드를 등록하면 urlscan.io + VirusTotal에서 해당 키워드가 제목인 사이트를 검색
+- **키워드 관리**: Supabase `keywords` 테이블에 등록/삭제
+- **URLScan 검색**: `page.title:"키워드"` 쿼리로 타이틀 매칭
+- **VirusTotal 검색**: `entity:url title:"키워드"` 쿼리 + **제목 정확 일치 필터링** (API 결과에서 제목이 키워드와 정확히 일치하는 것만 표시)
+- **검색 모드**: 신규만 (마지막 검색 이후 증분) / 전체 (기간 지정)
+- **검색 소스**: URLScan / VirusTotal 라디오 선택
+- **IP → 국가 조회**: ip-api.com 배치 API (100건 단위)
+- **URL 목록 복사**: 중복 제거, 후행 `/` 제거, 한국 IP 제외 옵션
+- **증분 검색**: 이전 검색 URL 제외 + 마지막 검색일 기준 API 필터
+- 기본 조회 기간: 14일
+- 20건 단위 페이지네이션
+- **백그라운드 실행**: 검색 중 페이지 이동 가능, 작업 큐 + 취소 지원
+
+### 5. 분석 이력 (분석이력)
 - 비교 분석/도메인 모니터링/유사 사이트 검색 결과가 Supabase에 자동 저장
 - API 재호출 없이 이전 결과 재확인 가능
 - 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링 / 유사 사이트 검색
@@ -93,10 +107,11 @@ anal_phishing_neo/
 │   ├── 1_비교분석.py            # 비교 분석 (파일 업로드 / URL 입력, 작업 큐)
 │   ├── 2_도메인모니터링.py      # 도메인 모니터링 (VT 검색 + WHOIS 조회, 작업 큐)
 │   ├── 4_유사사이트검색.py      # 유사 사이트 검색 (urlscan Structure Search Pro)
+│   ├── 5_키워드모니터링.py      # 키워드 모니터링 (URLScan + VT 타이틀 검색)
 │   └── 3_분석이력.py            # 분석 이력 (Supabase 조회/삭제, 상세 보기)
 │
 ├── analyzer.py                 # 비교 분석 엔진 (규칙 비교 + Gemini AI 호출)
-├── domain_monitor.py           # 도메인 모니터링 (VT Intelligence Search + python-whois)
+├── domain_monitor.py           # 도메인 모니터링 + 키워드 타이틀 검색 (VT Intelligence Search + python-whois)
 ├── urlscan_client.py           # urlscan.io API 클라이언트 (스캔 + Structure Search + 해시 검색)
 ├── db.py                       # Supabase CRUD (이력 저장/조회/삭제)
 ├── config.py                   # 설정 로더 (Streamlit Secrets → .env 폴백)
@@ -210,3 +225,6 @@ streamlit run app.py
 - 2026-03-27: 이력 시퀀스 번호 (카테고리별 순차 번호, DB seq 컬럼)
 - 2026-03-27: 분석이력에 유사 사이트 검색 카테고리 추가 (상세 테이블 뷰)
 - 2026-03-27: 유사 사이트 검색 기본 조회 기간 30일 → 10일
+- 2026-03-31: 키워드 모니터링 기능 추가 (URLScan + VT 타이틀 검색, 증분/전체 모드, IP 국가 조회)
+- 2026-04-01: 키워드모니터링 API 중복 호출 버그 수정 (st.form 패턴 적용)
+- 2026-04-01: VirusTotal 키워드 검색 제목 정확 일치 필터링 추가

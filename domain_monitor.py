@@ -114,6 +114,99 @@ def sort_by_creation_date(details_list):
     return details_list
 
 
+def search_urls_by_title(keyword, days=30, since_date=None):
+    """VirusTotal Intelligence Search로 페이지 타이틀 기반 URL 검색.
+    since_date가 주어지면 해당 날짜 이후만 검색 (YYYY-MM-DD 형식)."""
+    api_key = get_config("VT_API_KEY")
+    if not api_key:
+        raise Exception("VT_API_KEY가 설정되지 않았습니다.")
+
+    if since_date:
+        query = f'entity:url title:"{keyword}" ls:{since_date}+'
+    else:
+        query = f'entity:url title:"{keyword}" ls:{days}d+'
+
+    headers = {"x-apikey": api_key}
+    results = []
+    ip_set = set()
+    url = f"{VT_API_BASE}/intelligence/search"
+    params = {"query": query, "limit": 100, "relationships": "last_serving_ip_address"}
+
+    for page in range(3):
+        log_request("vt.title_search", "GET", url, params=params)
+        resp = requests.get(url, headers=headers, params=params, timeout=30)
+        data = resp.json()
+        log_response("vt.title_search", resp.status_code,
+                     {"page": page + 1, "count": len(data.get("data", []))})
+        resp.raise_for_status()
+
+        for item in data.get("data", []):
+            attrs = item.get("attributes", {})
+            item_url = attrs.get("url", item.get("id", ""))
+            title = attrs.get("title", "")
+            last_analysis = attrs.get("last_analysis_date", 0)
+            if last_analysis:
+                try:
+                    analysis_dt = datetime.utcfromtimestamp(last_analysis)
+                    last_analysis_str = analysis_dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    last_analysis_str = str(last_analysis)
+            else:
+                last_analysis_str = "N/A"
+
+            # IP 추출 (relationship)
+            ip = "N/A"
+            rels = item.get("relationships", {})
+            ip_data = rels.get("last_serving_ip_address", {}).get("data")
+            if ip_data and isinstance(ip_data, dict):
+                ip = ip_data.get("id", "N/A")
+                if ip != "N/A":
+                    ip_set.add(ip)
+
+            results.append({
+                "url": item_url,
+                "title": title,
+                "last_analysis_date": last_analysis_str,
+                "ip": ip,
+                "country": "",
+                "status": "success",
+            })
+
+        cursor = data.get("meta", {}).get("cursor")
+        if not cursor or not data.get("data"):
+            break
+        params = {"query": query, "limit": 100, "cursor": cursor,
+                  "relationships": "last_serving_ip_address"}
+
+    # 제목 정확 일치 필터링
+    results = [r for r in results if r.get("title", "").strip() == keyword.strip()]
+    ip_set = {r["ip"] for r in results if r.get("ip") and r["ip"] != "N/A"}
+
+    # IP → 국가 일괄 조회 (ip-api.com 배치 API, 무료)
+    ip_country = {}
+    ip_list = list(ip_set)
+    for batch_start in range(0, len(ip_list), 100):
+        batch = ip_list[batch_start:batch_start + 100]
+        try:
+            batch_resp = requests.post(
+                "http://ip-api.com/batch?fields=query,countryCode",
+                json=[{"query": ip} for ip in batch],
+                timeout=10,
+            )
+            if batch_resp.ok:
+                for item in batch_resp.json():
+                    ip_country[item["query"]] = item.get("countryCode") or "N/A"
+        except Exception:
+            pass
+
+    for r in results:
+        r["country"] = ip_country.get(r["ip"], "N/A")
+
+    # 분석일 기준 내림차순 정렬
+    results.sort(key=lambda x: x.get("last_analysis_date", ""), reverse=True)
+    return results
+
+
 def get_vt_quota():
     """VirusTotal API 사용량 조회"""
     api_key = get_config("VT_API_KEY")

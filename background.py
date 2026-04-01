@@ -46,8 +46,14 @@ class TaskQueue:
 
     def add(self, task):
         with self._lock:
+            # 동일 이름 태스크 중복 방지 (실행 중 또는 대기 중)
+            if self._current and not self._current.done and self._current.name == task.name:
+                return False
+            if any(t.name == task.name for t in self._queue):
+                return False
             self._queue.append(task)
         self._try_start()
+        return True
 
     def _try_start(self):
         with self._lock:
