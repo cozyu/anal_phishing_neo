@@ -59,6 +59,13 @@ col5, col6 = st.columns(2, gap="medium")
 
 with col5:
     st.markdown("""<div class="feature-card">
+        <h4>\U0001F3AF URL 종합 분석</h4>
+        <p>URL 하나를 입력하면 VirusTotal + CriminalIP + URLScan.io 3개 소스로 종합 분석합니다.</p>
+        <ul><li>위협 점수 산출 (0-100)</li><li>IOC 추출 + 연관 사이트 발견</li><li>Gemini AI 보고서</li></ul>
+    </div>""", unsafe_allow_html=True)
+
+with col6:
+    st.markdown("""<div class="feature-card">
         <h4>\U0001F4CB 분석 이력</h4>
         <p>이전 분석 결과를 다시 확인하거나 삭제할 수 있습니다.</p>
         <ul><li>Supabase 저장</li><li>API 재호출 불필요</li></ul>

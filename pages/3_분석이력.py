@@ -145,6 +145,137 @@ def _render_detail(category):
 
         return True
 
+    elif category == "url_analysis":
+        # 위협 판정 배지
+        score = data.get("score", 0)
+        verdict = data.get("verdict", "")
+        reasons = data.get("verdict_reasons", [])
+        if verdict == "malicious":
+            icon, label, css_bg = "🔴", "악성", "#4a1010"
+        elif verdict == "suspicious":
+            icon, label, css_bg = "🟡", "의심", "#4a3800"
+        else:
+            icon, label, css_bg = "🟢", "안전", "#1a472a"
+        reasons_html = "<br>".join(f"• {r}" for r in reasons[:5])
+        st.markdown(
+            f"<div style='background:{css_bg}; border-radius:8px; padding:1rem; margin-bottom:1rem;'>"
+            f"<h3 style='margin:0'>{icon} {label} — 위협 점수: {score}/100</h3>"
+            f"<p style='font-size:0.85rem; opacity:0.9; margin:0.5rem 0 0 0'>{reasons_html}</p></div>",
+            unsafe_allow_html=True,
+        )
+
+        # 탭 구성
+        tab_overview, tab_ioc, tab_related, tab_ai = st.tabs(["📋 개요", "🔍 IOC", "🔗 연관사이트", "📊 AI 보고서"])
+
+        with tab_overview:
+            collected = data.get("collected", {})
+            cip = collected.get("criminalip", {})
+            info = cip.get("main_domain_info", {}) if cip.get("status") == "ok" else {}
+            whois_info = collected.get("whois", {}).get("data", {}) if collected.get("whois", {}).get("status") == "ok" else {}
+            rows = [
+                ("도메인", data.get("domain", "")),
+                ("URL", data.get("url", "")),
+                ("등록일", info.get("domain_created") or whois_info.get("creation_date", "N/A")),
+                ("등록기관", info.get("domain_registrar") or whois_info.get("registrar", "N/A")),
+            ]
+            vt_url = collected.get("vt_url", {})
+            if vt_url.get("status") == "ok":
+                stats = vt_url.get("data", {}).get("data", {}).get("attributes", {}).get("stats", {})
+                if stats:
+                    rows.append(("VT 탐지", f"malicious={stats.get('malicious', 0)}, suspicious={stats.get('suspicious', 0)}"))
+            md = "| 항목 | 값 |\n|------|-----|\n"
+            for label_text, val in rows:
+                md += f"| {label_text} | {_esc(val)} |\n"
+            st.markdown(md)
+
+            screenshot = data.get("screenshot_url")
+            if screenshot:
+                st.image(screenshot, width=400)
+
+        with tab_ioc:
+            iocs = data.get("iocs", {})
+            domains_ioc = iocs.get("domains", [])
+            if domains_ioc:
+                st.markdown(f"**도메인 ({len(domains_ioc)}개)**")
+                st.code("\n".join(sorted(set(domains_ioc))))
+            ips_ioc = iocs.get("ips", [])
+            if ips_ioc:
+                st.markdown(f"**IP ({len(ips_ioc)}개)**")
+                ip_md = "| IP | ASN | 국가 | 위험도 |\n|-----|-----|------|--------|\n"
+                for ip in ips_ioc:
+                    ip_md += f"| {ip.get('ip', '')} | {ip.get('asn', '')} | {ip.get('country', '')} | {ip.get('score', '')} |\n"
+                st.markdown(ip_md)
+            jarm = iocs.get("jarm")
+            if jarm:
+                st.markdown("**JARM**")
+                st.code(jarm)
+            san = iocs.get("ssl_san_domains", [])
+            if san:
+                with st.expander(f"SSL SAN 공유 도메인 ({len(san)}개)"):
+                    st.code("\n".join(san))
+            op = iocs.get("operator_params", {})
+            if op:
+                st.markdown("**운영자 파라미터**")
+                op_md = "| 파라미터 | 값 |\n|---------|-----|\n"
+                for k, v in op.items():
+                    op_md += f"| {k} | `{v}` |\n"
+                st.markdown(op_md)
+
+        with tab_related:
+            related = data.get("related_sites", {})
+            confirmed = related.get("confirmed_malicious", [])
+            if confirmed:
+                st.markdown(f"**🔴 확인된 악성 ({len(confirmed)}개)**")
+                for s in confirmed:
+                    st.markdown(f"- **{s['domain']}** — {s['reason']}")
+            needs = related.get("needs_investigation", [])
+            if needs:
+                st.markdown(f"**🟡 조사 필요 ({len(needs)}개)**")
+                for s in needs:
+                    st.markdown(f"- **{s['domain']}** — {s['reason']}")
+            legit = related.get("legitimate", [])
+            if legit:
+                with st.expander(f"🟢 합법 서비스 ({len(legit)}개)"):
+                    for s in legit:
+                        st.markdown(f"- {s['domain']} — {s['reason']}")
+            if not confirmed and not needs and not legit:
+                st.info("연관 사이트 정보 없음")
+
+        with tab_ai:
+            ai_model = data.get("ai_model")
+            if ai_model:
+                st.caption(f"Gemini 모델: {ai_model}")
+            ai_report = data.get("ai_report", "")
+            if ai_report:
+                st.markdown(f"<div class='report-section'>\n\n{ai_report}\n\n</div>", unsafe_allow_html=True)
+            else:
+                st.warning("AI 보고서 없음")
+
+        return True
+
+    elif category == "bulk_scan":
+        st.markdown(
+            f"**전체**: {data.get('total', 0)}건 | "
+            f"**스캔 제출**: {data.get('submitted', 0)}건 | "
+            f"**이력 있음**: {data.get('skipped', 0)}건 | "
+            f"**실패**: {data.get('failed', 0)}건"
+        )
+        bulk_results = data.get("results", [])
+        if bulk_results:
+            table_md = "| # | URL | 상태 | 링크 |\n"
+            table_md += "|---|-----|------|------|\n"
+            for i, r in enumerate(bulk_results, 1):
+                url_display = _esc(r.get("url", ""))
+                if len(url_display) > 60:
+                    url_display = url_display[:57] + "..."
+                uuid = r.get("uuid")
+                link = f"[보기](https://pro.urlscan.io/result/{uuid}/)" if uuid else _esc(r.get("error") or "-")
+                table_md += f"| {i} | {url_display} | {_esc(r.get('status', ''))} | {link} |\n"
+            st.markdown(f"<div class='history-table'>\n\n{table_md}\n\n</div>", unsafe_allow_html=True)
+        else:
+            st.info("결과가 없습니다.")
+        return True
+
     elif category == "domains":
         st.markdown(f"**키워드**: {data.get('keyword', 'N/A')}")
 
@@ -230,7 +361,7 @@ def _render_list(category):
 # --- 카테고리 선택 ---
 def _on_tab_change():
     """탭 전환 시 상세 보기 초기화"""
-    for _k in ["view_compare_id", "view_domains_id", "view_similar_id"]:
+    for _k in ["view_compare_id", "view_domains_id", "view_similar_id", "view_url_analysis_id", "view_bulk_scan_id"]:
         st.session_state.pop(_k, None)
 
 
@@ -238,6 +369,8 @@ _CATEGORY_LABELS = {
     "compare": "비교 분석",
     "domains": "도메인 모니터링",
     "similar": "유사 사이트 검색",
+    "url_analysis": "URL 분석",
+    "bulk_scan": "일괄 스캔",
 }
 
 selected = st.radio(

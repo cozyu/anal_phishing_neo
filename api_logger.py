@@ -14,6 +14,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # 로거 설정
 logger = logging.getLogger("api_logger")
 logger.setLevel(logging.DEBUG)
+logger.propagate = False  # 루트 로거 전파 방지
 
 # 파일 핸들러 (일별 로그)
 _current_date = None
@@ -24,9 +25,10 @@ def _ensure_handler():
     global _current_date, _file_handler
     today = datetime.now(KST).strftime("%Y-%m-%d")
     if _current_date != today:
-        if _file_handler:
-            logger.removeHandler(_file_handler)
-            _file_handler.close()
+        # 기존 핸들러 모두 제거 (중복 방지)
+        for h in logger.handlers[:]:
+            logger.removeHandler(h)
+            h.close()
         log_path = os.path.join(LOG_DIR, f"api_{today}.log")
         _file_handler = logging.FileHandler(log_path, encoding="utf-8")
         _file_handler.setFormatter(

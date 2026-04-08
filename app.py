@@ -15,6 +15,8 @@ pg = st.navigation([
     st.Page("pages/2_도메인모니터링.py", title="도메인모니터링", icon="\U0001F310"),
     st.Page("pages/4_유사사이트검색.py", title="유사사이트검색", icon="\U0001F50E"),
     st.Page("pages/5_키워드모니터링.py", title="키워드모니터링", icon="\U0001F511"),
+    st.Page("pages/6_URL분석.py", title="URL분석", icon="\U0001F3AF"),
+    st.Page("pages/7_일괄스캔.py", title="일괄스캔", icon="\U0001F4E6"),
     st.Page("pages/3_분석이력.py", title="분석이력", icon="\U0001F4CB"),
 ])
 
