@@ -66,10 +66,28 @@
 - 20건 단위 페이지네이션
 - **백그라운드 실행**: 검색 중 페이지 이동 가능, 작업 큐 + 취소 지원
 
-### 5. 분석 이력 (분석이력)
+### 5. URL 종합 분석 (URL분석)
+- URL 하나를 입력하면 VirusTotal + CriminalIP + URLScan.io 3개 소스로 종합 분석
+- **위협 판정**: 악성/의심/안전 판정 + 위협 점수 (0~100)
+- **IOC 추출**: 도메인, IP(ASN/국가/위험도), JARM, SSL SAN, 운영자 파라미터
+- **연관 사이트 발견**: 확인된 악성 / 조사 필요 / 합법 서비스 분류
+- **Gemini AI 보고서**: 수집된 데이터 기반 종합 분석 리포트
+- **백그라운드 실행**: 분석 중 페이지 이동 가능, 작업 큐 + 취소 지원
+
+### 6. 일괄 URL 스캔 (일괄스캔)
+- URL 목록을 입력하면 urlscan.io 스캔 이력 확인 후 미등록 URL만 스캔 제출
+- **워크플로우**: URL 정규화 → 도메인 추출 → 기존 스캔 검색 → 미등록 URL 스캔 제출
+- 이력 있는 URL은 건너뛰고 기존 UUID 기록
+- 결과 테이블: URL, 상태(이력있음/스캔제출/실패), pro.urlscan.io 링크
+- 요약 메트릭: 전체/스캔제출/이력있음/실패 건수
+- 중복 URL 자동 제거, 최대 100건 제한
+- URL 간 0.5초 딜레이 (API 제한 대응)
+- **백그라운드 실행**: 작업 큐 + 취소 지원
+
+### 7. 분석 이력 (분석이력)
 - 비교 분석/도메인 모니터링/유사 사이트 검색 결과가 Supabase에 자동 저장
 - API 재호출 없이 이전 결과 재확인 가능
-- 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링 / 유사 사이트 검색
+- 카테고리 전환 (라디오 버튼): 비교 분석 / 도메인 모니터링 / 유사 사이트 검색 / URL 분석 / 일괄 스캔
 - 이력 목록 (10건 단위 페이지네이션, 시퀀스 번호 표시) + 상세 보기 + 삭제 기능
 - 카테고리 전환 시 상세 보기 자동 초기화 (목록으로 복귀)
 - 모든 시간은 KST(UTC+9)로 표시, DB 저장은 UTC
@@ -82,6 +100,7 @@
 - **도메인 검색**: VirusTotal Intelligence Search API
 - **도메인 상세 조회**: python-whois (공개 WHOIS 서버, 무료)
 - **URL 스캔/유사검색**: urlscan.io API + Structure Search Pro API
+- **URL 종합 분석**: CriminalIP API + VirusTotal URL API + python-whois
 - **이력 저장**: Supabase (PostgreSQL)
 - **설정 관리**: `.env` (로컬) / Streamlit Secrets (클라우드)
 - **비동기 처리**: `@st.fragment(run_every="1s")` + `threading` 기반 작업 큐
@@ -108,9 +127,14 @@ anal_phishing_neo/
 │   ├── 2_도메인모니터링.py      # 도메인 모니터링 (VT 검색 + WHOIS 조회, 작업 큐)
 │   ├── 4_유사사이트검색.py      # 유사 사이트 검색 (urlscan Structure Search Pro)
 │   ├── 5_키워드모니터링.py      # 키워드 모니터링 (URLScan + VT 타이틀 검색)
+│   ├── 6_URL분석.py             # URL 종합 분석 (VT + CriminalIP + URLScan)
+│   ├── 7_일괄스캔.py            # 일괄 URL 스캔 (urlscan 이력 확인 + 스캔 제출)
 │   └── 3_분석이력.py            # 분석 이력 (Supabase 조회/삭제, 상세 보기)
 │
 ├── analyzer.py                 # 비교 분석 엔진 (규칙 비교 + Gemini AI 호출)
+├── url_analyzer.py             # URL 종합 분석 엔진 (VT + CriminalIP + URLScan 통합)
+├── url_analysis_prompt.yaml    # URL 분석 Gemini AI 프롬프트 설정
+├── criminalip_client.py        # CriminalIP API 클라이언트
 ├── domain_monitor.py           # 도메인 모니터링 + 키워드 타이틀 검색 (VT Intelligence Search + python-whois)
 ├── urlscan_client.py           # urlscan.io API 클라이언트 (스캔 + Structure Search + 해시 검색)
 ├── db.py                       # Supabase CRUD (이력 저장/조회/삭제)
@@ -131,6 +155,7 @@ anal_phishing_neo/
 | `URLSCAN_API_KEY` | urlscan.io API 키 (URL 비교 분석 + 유사 사이트 검색, Pro 필요) | O |
 | `SUPABASE_URL` | Supabase 프로젝트 URL | O |
 | `SUPABASE_KEY` | Supabase anon/service_role 키 | O |
+| `CRIMINALIP_KEY` | CriminalIP API 키 (URL 종합 분석용) | O |
 | `WHOISXML_API_KEY` | WhoisXML API 키 (현재 미사용, 레거시) | X |
 | `DOMAIN_LOOKUP_DAYS` | 도메인 조회 기간 일수 (기본: 30) | X |
 
@@ -228,3 +253,7 @@ streamlit run app.py
 - 2026-03-31: 키워드 모니터링 기능 추가 (URLScan + VT 타이틀 검색, 증분/전체 모드, IP 국가 조회)
 - 2026-04-01: 키워드모니터링 API 중복 호출 버그 수정 (st.form 패턴 적용)
 - 2026-04-01: VirusTotal 키워드 검색 제목 정확 일치 필터링 추가
+- 2026-04-08: URL 종합 분석 기능 추가 (VT + CriminalIP + URLScan 통합, 위협 점수, IOC, AI 보고서)
+- 2026-04-08: 일괄 URL 스캔 기능 추가 (urlscan 이력 확인 → 미등록 URL 스캔 제출)
+- 2026-04-08: 분석이력에 URL 분석/일괄 스캔 카테고리 추가
+- 2026-04-08: API 로거 중복 핸들러 방지 수정
