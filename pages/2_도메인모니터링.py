@@ -7,7 +7,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "domains"
-st.title("\U0001F310 도메인 모니터링(Title)")
+st.title("\U0001F310 도메인 검색 및 모니터링(URL)")
 
 st.markdown("""
 <style>
@@ -86,7 +86,7 @@ def _esc(val):
 with st.form("search_form"):
     col1, col2 = st.columns([3, 1])
     with col1:
-        keyword = st.text_input("검색 키워드", placeholder="예: samsung, naver, paypal")
+        keyword = st.text_input("키워드 등록", placeholder="도메인 검색 키워드 입력 (예: fsec, fsi 등)")
     with col2:
         days = st.number_input(
             "등록일 기준 (일)",

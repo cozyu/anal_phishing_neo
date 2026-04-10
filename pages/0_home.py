@@ -30,7 +30,7 @@ with col1:
 
 with col2:
     st.markdown("""<div class="feature-card">
-        <h4>\U0001F310 도메인 모니터링(Title)</h4>
+        <h4>\U0001F310 도메인 검색 및 모니터링(URL)</h4>
         <p>키워드를 입력하면 최근 신규 등록된 의심 도메인을 조회합니다.</p>
         <ul><li>VirusTotal 도메인 검색</li><li>WHOIS 상세 정보</li></ul>
     </div>""", unsafe_allow_html=True)
@@ -41,7 +41,7 @@ col3, col4 = st.columns(2, gap="medium")
 
 with col3:
     st.markdown("""<div class="feature-card">
-        <h4>\U0001F511 도메인 모니터링(URL)</h4>
+        <h4>\U0001F511 도메인 검색 및 모니터링(Title)</h4>
         <p>웹사이트 제목 키워드를 등록하면 urlscan.io + VirusTotal에서 동일 키워드 사이트를 검색합니다.</p>
         <ul><li>URLScan / VirusTotal 개별 검색</li><li>URL 목록 복사</li></ul>
     </div>""", unsafe_allow_html=True)

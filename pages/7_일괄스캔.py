@@ -2,12 +2,12 @@
 
 import time
 import streamlit as st
-from urlscan_client import _normalize_url, _extract_domain, search_existing_scan, submit_scan
+from urlscan_client import _normalize_url, _extract_domain, search_existing_scan_by_url, submit_scan
 from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "bulk_scan"
-st.title("📦 피싱사이트 신고(URLScan)")
+st.title("📦 피싱사이트 분석(URLScan)")
 
 st.markdown("""
 <style>
@@ -62,7 +62,7 @@ def _bulk_scan_bg(urls, task=None):
         }
 
         try:
-            existing_uuid = search_existing_scan(domain)
+            existing_uuid = search_existing_scan_by_url(url)
             if existing_uuid:
                 result_item["status"] = "이력있음"
                 result_item["uuid"] = existing_uuid

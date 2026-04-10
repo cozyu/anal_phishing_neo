@@ -14,6 +14,9 @@ st.markdown("""
 <style>
     .history-table { font-size: 0.85rem; }
     .history-table td, .history-table th { white-space: nowrap; }
+    .history-table td:nth-child(2) { white-space: normal; word-break: break-all; max-width: 320px; }
+    .history-table td:nth-child(3), .history-table td:nth-child(4) { white-space: normal; word-break: break-word; max-width: 200px; }
+    .history-table td:nth-child(6), .history-table td:nth-child(7) { white-space: nowrap; }
     .report-section { font-size: 0.85rem; line-height: 1.5; }
     .report-section h1 { font-size: 1.3rem; }
     .report-section h2 { font-size: 1.15rem; }
@@ -297,6 +300,18 @@ def _render_detail(category):
                 st.info("결과 없음")
                 continue
 
+            # 최종분석일/스캔일 기준 내림차순 정렬
+            if source == "urlscan":
+                kw_results.sort(
+                    key=lambda x: x.get("task", {}).get("time", ""),
+                    reverse=True,
+                )
+            else:
+                kw_results.sort(
+                    key=lambda x: x.get("last_analysis_date", "") if x.get("last_analysis_date", "") not in ("N/A", "") else "",
+                    reverse=True,
+                )
+
             if source == "urlscan":
                 table_md = "| # | URL | 도메인 | 페이지 제목 | IP | 국가 | 등록일 | 스캔일시 |\n"
                 table_md += "|---|-----|--------|------------|----|----|------|--------|\n"
@@ -382,7 +397,10 @@ def _render_list(category):
         with col_num:
             st.text(f"#{seq}" if seq else "-")
         with col_title:
-            st.markdown(f"**{item['title']}**")
+            title_text = item['title']
+            if len(title_text) > 60:
+                title_text = title_text[:57] + "..."
+            st.markdown(f"**{title_text}**")
         with col_date:
             st.text(_to_kst(item.get("created_at", "")))
         with col_actions:
@@ -417,12 +435,12 @@ def _on_tab_change():
 
 
 _CATEGORY_LABELS = {
-    "domains": "도메인 모니터링(Title)",
-    "keyword_monitor": "도메인 모니터링(URL)",
+    "domains": "도메인 검색 및 모니터링(URL)",
+    "keyword_monitor": "도메인 검색 및 모니터링(Title)",
     "similar": "유사 사이트 검색(DOM기반)",
     "url_analysis": "피싱사이트 분석(자동분석)",
     "compare": "피싱사이트 분석(수동분석)",
-    "bulk_scan": "피싱사이트 신고(URLScan)",
+    "bulk_scan": "피싱사이트 분석(URLScan)",
 }
 
 selected = st.radio(

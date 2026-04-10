@@ -14,7 +14,7 @@ from domain_monitor import search_urls_by_title as vt_search_urls_by_title
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "keyword"
-st.title("\U0001F511 도메인 모니터링(URL)")
+st.title("\U0001F511 도메인 검색 및 모니터링(Title)")
 
 st.markdown("""
 <style>
@@ -24,6 +24,9 @@ st.markdown("""
     .kw-table th, .kw-table td {
         font-size: 0.85rem; padding: 0.3rem 0.6rem;
     }
+    table td:nth-child(2) { white-space: normal !important; word-break: break-all !important; max-width: 320px !important; }
+    table td:nth-child(3), table td:nth-child(4) { white-space: normal !important; word-break: break-word !important; max-width: 200px !important; }
+    table td:nth-child(6), table td:nth-child(7) { white-space: nowrap !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,8 +107,9 @@ def _resolve_ip_countries(results_list, ip_key_fn):
 
 
 def _resolve_domain_creation_dates(results_list, domain_key_fn, task=None, label=""):
-    """결과 목록에서 도메인을 추출하여 python-whois로 등록일 조회 후 매핑"""
+    """결과 목록에서 도메인을 추출하여 python-whois로 등록일 병렬 조회 후 매핑"""
     import whois as _whois
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     domain_set = set()
     for r in results_list:
         domain = domain_key_fn(r)
@@ -113,24 +117,35 @@ def _resolve_domain_creation_dates(results_list, domain_key_fn, task=None, label
             domain_set.add(domain)
     if not domain_set:
         return
-    domain_dates = {}
-    for i, domain in enumerate(domain_set):
-        if task and task.cancelled:
-            return
-        if task and label:
-            task.set_progress(f"{label} 도메인 등록일 조회 중... ({i+1}/{len(domain_set)})")
+
+    def _lookup_one(domain):
         try:
             w = _whois.whois(domain)
             creation_date = w.creation_date
             if isinstance(creation_date, list):
                 creation_date = creation_date[0]
             if creation_date:
-                domain_dates[domain] = str(creation_date)[:10]
+                return domain, str(creation_date)[:10]
             else:
-                domain_dates[domain] = "N/A"
+                return domain, "N/A"
         except Exception:
-            domain_dates[domain] = "N/A"
-        time.sleep(0.3)
+            return domain, "N/A"
+
+    domain_dates = {}
+    workers = min(10, len(domain_set))
+    done_count = 0
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_lookup_one, d): d for d in domain_set}
+        for future in as_completed(futures):
+            if task and task.cancelled:
+                executor.shutdown(wait=False, cancel_futures=True)
+                return
+            domain, date_str = future.result()
+            domain_dates[domain] = date_str
+            done_count += 1
+            if task and label:
+                task.set_progress(f"{label} 도메인 등록일 조회 중... ({done_count}/{len(domain_set)})")
+
     for r in results_list:
         domain = domain_key_fn(r)
         if domain and domain in domain_dates:
@@ -386,7 +401,7 @@ if keywords:
             urlscan_data = get_latest_keyword_results(selected_id, "urlscan")
             if urlscan_data and urlscan_data.get("results"):
                 results = urlscan_data["results"]
-                # 스캔일 기준 내림차순 정렬
+                # 스캔일시 기준 내림차순 정렬
                 results.sort(
                     key=lambda x: x.get("task", {}).get("time", ""),
                     reverse=True,
@@ -460,9 +475,9 @@ if keywords:
             vt_data = get_latest_keyword_results(selected_id, "virustotal")
             if vt_data and vt_data.get("results"):
                 results = vt_data["results"]
-                # 분석일 기준 내림차순 정렬
+                # 최종 분석일 기준 내림차순 정렬 (N/A는 맨 뒤)
                 results.sort(
-                    key=lambda x: x.get("last_analysis_date", "") if x.get("last_analysis_date", "") != "N/A" else "",
+                    key=lambda x: x.get("last_analysis_date", "") if x.get("last_analysis_date", "") not in ("N/A", "") else "",
                     reverse=True,
                 )
                 total = vt_data.get("total_found", len(results))

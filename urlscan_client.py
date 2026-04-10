@@ -17,7 +17,7 @@ def _normalize_url(url):
 
 
 def search_existing_scan(domain):
-    """urlscan.io Search API로 기존 스캔 결과 UUID 조회"""
+    """urlscan.io Search API로 도메인 기준 기존 스캔 결과 UUID 조회"""
     api_key = get_config("URLSCAN_API_KEY")
     headers = {"API-Key": api_key} if api_key else {}
     params = {"q": f"domain:{domain}", "size": 1}
@@ -26,6 +26,25 @@ def search_existing_scan(domain):
     log_request("urlscan.search", "GET", endpoint, params=params)
     resp = requests.get(endpoint, headers=headers, params=params, timeout=30)
     log_response("urlscan.search", resp.status_code,
+                 {"total": resp.json().get("total", 0)} if resp.ok else resp.text)
+    if resp.ok:
+        data = resp.json()
+        results = data.get("results", [])
+        if results:
+            return results[0].get("_id")
+    return None
+
+
+def search_existing_scan_by_url(url):
+    """urlscan.io Search API로 정확한 URL의 기존 스캔 결과 UUID 조회"""
+    api_key = get_config("URLSCAN_API_KEY")
+    headers = {"API-Key": api_key} if api_key else {}
+    params = {"q": f'page.url:"{url}"', "size": 1}
+    endpoint = f"{URLSCAN_API}/search/"
+
+    log_request("urlscan.search_url", "GET", endpoint, params=params)
+    resp = requests.get(endpoint, headers=headers, params=params, timeout=30)
+    log_response("urlscan.search_url", resp.status_code,
                  {"total": resp.json().get("total", 0)} if resp.ok else resp.text)
     if resp.ok:
         data = resp.json()
