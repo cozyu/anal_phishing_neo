@@ -8,7 +8,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "compare"
-st.title("\U0001F50D 피싱 사이트 비교 분석")
+st.title("\U0001F50D 피싱사이트 분석(수동분석)")
 
 st.markdown("""
 <style>
@@ -156,7 +156,7 @@ def _retry_with_existing_bg(url1, url2, meta1, meta2, task=None):
     return _analysis_bg(meta1, meta2, mode="url", task=task)
 
 
-tab_file, tab_url = st.tabs(["파일 업로드", "URL 입력"])
+tab_url, tab_file = st.tabs(["URL 입력", "파일 업로드"])
 
 with tab_file:
     st.markdown("urlscan.io에서 다운로드한 JSON 파일 2개를 업로드하세요.")

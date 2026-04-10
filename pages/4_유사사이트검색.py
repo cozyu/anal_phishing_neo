@@ -6,7 +6,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "similar"
-st.title("\U0001F50E 유사 사이트 검색")
+st.title("\U0001F50E 유사 사이트 검색(DOM기반)")
 
 st.markdown("""
 <style>

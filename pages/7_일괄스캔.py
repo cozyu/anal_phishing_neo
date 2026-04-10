@@ -7,7 +7,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "bulk_scan"
-st.title("📦 일괄 URL 스캔")
+st.title("📦 피싱사이트 신고(URLScan)")
 
 st.markdown("""
 <style>

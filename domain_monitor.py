@@ -114,7 +114,7 @@ def sort_by_creation_date(details_list):
     return details_list
 
 
-def search_urls_by_title(keyword, days=30, since_date=None):
+def search_urls_by_title(keyword, days=30, since_date=None, exact_match=True):
     """VirusTotal Intelligence Search로 페이지 타이틀 기반 URL 검색.
     since_date가 주어지면 해당 날짜 이후만 검색 (YYYY-MM-DD 형식)."""
     api_key = get_config("VT_API_KEY")
@@ -178,8 +178,12 @@ def search_urls_by_title(keyword, days=30, since_date=None):
         params = {"query": query, "limit": 100, "cursor": cursor,
                   "relationships": "last_serving_ip_address"}
 
-    # 제목 정확 일치 필터링
-    results = [r for r in results if r.get("title", "").strip() == keyword.strip()]
+    # 제목 필터링
+    if exact_match:
+        results = [r for r in results if r.get("title", "").strip() == keyword.strip()]
+    else:
+        kw_lower = keyword.strip().lower()
+        results = [r for r in results if kw_lower in r.get("title", "").strip().lower()]
     ip_set = {r["ip"] for r in results if r.get("ip") and r["ip"] != "N/A"}
 
     # IP → 국가 일괄 조회 (ip-api.com 배치 API, 무료)

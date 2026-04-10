@@ -7,13 +7,14 @@ from datetime import datetime, timezone, timedelta
 from db import (
     add_keyword, get_keywords, delete_keyword,
     save_keyword_results, get_latest_keyword_results, get_seen_urls,
+    save_history,
 )
 from urlscan_client import search_by_title
 from domain_monitor import search_urls_by_title as vt_search_urls_by_title
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "keyword"
-st.title("\U0001F511 키워드 모니터링")
+st.title("\U0001F511 도메인 모니터링(URL)")
 
 st.markdown("""
 <style>
@@ -102,6 +103,43 @@ def _resolve_ip_countries(results_list, ip_key_fn):
                 r["country"] = ip_country.get(ip, "N/A")
 
 
+def _resolve_domain_creation_dates(results_list, domain_key_fn, task=None, label=""):
+    """결과 목록에서 도메인을 추출하여 python-whois로 등록일 조회 후 매핑"""
+    import whois as _whois
+    domain_set = set()
+    for r in results_list:
+        domain = domain_key_fn(r)
+        if domain and domain != "N/A":
+            domain_set.add(domain)
+    if not domain_set:
+        return
+    domain_dates = {}
+    for i, domain in enumerate(domain_set):
+        if task and task.cancelled:
+            return
+        if task and label:
+            task.set_progress(f"{label} 도메인 등록일 조회 중... ({i+1}/{len(domain_set)})")
+        try:
+            w = _whois.whois(domain)
+            creation_date = w.creation_date
+            if isinstance(creation_date, list):
+                creation_date = creation_date[0]
+            if creation_date:
+                domain_dates[domain] = str(creation_date)[:10]
+            else:
+                domain_dates[domain] = "N/A"
+        except Exception:
+            domain_dates[domain] = "N/A"
+        time.sleep(0.3)
+    for r in results_list:
+        domain = domain_key_fn(r)
+        if domain and domain in domain_dates:
+            if "page" in r:
+                r["page"]["creation_date"] = domain_dates[domain]
+            else:
+                r["creation_date"] = domain_dates.get(domain, "N/A")
+
+
 def _urlscan_search_bg(keywords_list, days, incremental=True, task=None):
     """URLScan 키워드 검색. incremental=True이면 마지막 검색 이후 신규만."""
     all_results = {}
@@ -124,6 +162,11 @@ def _urlscan_search_bg(keywords_list, days, incremental=True, task=None):
             if task:
                 task.set_progress(f"[URLScan/{mode_label}] '{kw['keyword']}' 국가 정보 조회 중...")
             _resolve_ip_countries(new_results, lambda r: r.get("page", {}).get("ip"))
+            # 도메인 등록일 조회
+            _resolve_domain_creation_dates(
+                new_results, lambda r: r.get("page", {}).get("domain"),
+                task=task, label=f"[URLScan/{mode_label}] '{kw['keyword']}'",
+            )
             save_keyword_results(kw["id"], kw["keyword"], "urlscan", len(new_results), new_results[:100])
             all_results[kw["id"]] = {"keyword": kw["keyword"], "total": len(new_results), "results": new_results}
         except Exception as e:
@@ -133,7 +176,7 @@ def _urlscan_search_bg(keywords_list, days, incremental=True, task=None):
     return {"source": "urlscan", "data": all_results}
 
 
-def _vt_search_bg(keywords_list, days, incremental=True, task=None):
+def _vt_search_bg(keywords_list, days, incremental=True, exact_match=True, task=None):
     """VirusTotal 키워드 타이틀 검색. incremental=True이면 마지막 검색 이후 신규만."""
     all_results = {}
     for i, kw in enumerate(keywords_list):
@@ -144,7 +187,7 @@ def _vt_search_bg(keywords_list, days, incremental=True, task=None):
             task.set_progress(f"[VirusTotal/{mode_label}] '{kw['keyword']}' 타이틀 검색 중... ({i+1}/{len(keywords_list)})")
         try:
             since = _get_since_date(kw["id"], "virustotal") if incremental else None
-            results = vt_search_urls_by_title(kw["keyword"], days=days, since_date=since)
+            results = vt_search_urls_by_title(kw["keyword"], days=days, since_date=since, exact_match=exact_match)
             if task and task.cancelled:
                 return None
             if incremental:
@@ -152,6 +195,17 @@ def _vt_search_bg(keywords_list, days, incremental=True, task=None):
                 new_results = [r for r in results if r.get("url", "") not in seen]
             else:
                 new_results = results
+            # 도메인 등록일 조회
+            from urllib.parse import urlparse as _urlparse
+            def _vt_domain(r):
+                try:
+                    return _urlparse(r.get("url", "")).hostname or "N/A"
+                except Exception:
+                    return "N/A"
+            _resolve_domain_creation_dates(
+                new_results, _vt_domain,
+                task=task, label=f"[VirusTotal/{mode_label}] '{kw['keyword']}'",
+            )
             save_keyword_results(kw["id"], kw["keyword"], "virustotal", len(new_results), new_results)
             all_results[kw["id"]] = {"keyword": kw["keyword"], "total": len(new_results), "results": new_results}
         except Exception as e:
@@ -215,12 +269,20 @@ if keywords:
                 key="kw_days",
             )
 
-        search_source = st.radio(
-            "검색 소스",
-            ["URLScan", "VirusTotal"],
-            horizontal=True,
-            key="kw_source",
-        )
+        col_source, col_match = st.columns([2, 1])
+        with col_source:
+            search_source = st.radio(
+                "검색 소스",
+                ["URLScan", "VirusTotal"],
+                horizontal=True,
+                key="kw_source",
+            )
+        with col_match:
+            exact_match = st.checkbox(
+                "제목 정확 일치 (VT)",
+                value=True,
+                key="kw_exact_match",
+            )
         search_submitted = st.form_submit_button(
             "검색", disabled=queue.is_busy,
         )
@@ -238,12 +300,23 @@ if keywords:
             task = BackgroundTask(
                 name=f"VirusTotal {mode_label} 검색 ({len(keywords)}건)",
                 target=_vt_search_bg,
-                args=(keywords, days, incremental),
+                args=(keywords, days, incremental, exact_match),
             )
         queue.add(task)
         st.rerun()
 else:
     st.info("등록된 키워드가 없습니다. 위에서 키워드를 등록하세요.")
+
+
+def _save_keyword_history(result):
+    """키워드 검색 결과를 분석이력에 저장"""
+    source = result.get("source", "")
+    data = result.get("data", {})
+    source_label = "URLScan" if source == "urlscan" else "VirusTotal"
+    keywords_str = ", ".join(v["keyword"] for v in data.values())
+    total_found = sum(v.get("total", 0) for v in data.values())
+    title = f"[키워드/{source_label}] {keywords_str} ({total_found}건)"
+    save_history("keyword_monitor", title, result)
 
 
 # ── 작업 큐 상태 (fragment) ──
@@ -257,6 +330,8 @@ def _queue_status():
             st.error(f"검색 오류: {last.error}")
         elif last.result:
             st.session_state["kw_last_result"] = last.result
+            # 분석이력에 저장
+            _save_keyword_history(last.result)
         st.rerun(scope="app")
         return
 
@@ -328,7 +403,7 @@ if keywords:
                 page_items = results[start:end]
 
                 # 테이블 헤더
-                header = "| # | URL | 도메인 | 페이지 제목 | IP | 국가 | 스캔일시 |\n|---|-----|--------|------------|----|----|--------|\n"
+                header = "| # | URL | 도메인 | 페이지 제목 | IP | 국가 | 등록일 | 스캔일시 |\n|---|-----|--------|------------|----|----|------|--------|\n"
                 rows = ""
                 for idx, item in enumerate(page_items, start=start + 1):
                     page_info = item.get("page", {})
@@ -338,8 +413,9 @@ if keywords:
                     title = (page_info.get("title") or "N/A").replace("|", "\\|")[:50]
                     ip = page_info.get("ip", "N/A")
                     country = page_info.get("country", "N/A")
+                    creation_date = page_info.get("creation_date", "N/A")
                     scan_time = _to_kst(task_info.get("time", ""))
-                    rows += f"| {idx} | {url[:60]} | {domain} | {title} | {ip} | {country} | {scan_time} |\n"
+                    rows += f"| {idx} | {url[:60]} | {domain} | {title} | {ip} | {country} | {creation_date} | {scan_time} |\n"
                 st.markdown(header + rows)
 
                 # 페이지네이션 컨트롤
@@ -401,15 +477,16 @@ if keywords:
                 page_items = results[start:end]
 
                 # 테이블
-                header = "| # | URL | 페이지 제목 | IP | 국가 | 최종 분석일 |\n|---|-----|-----------|----|----|----------|\n"
+                header = "| # | URL | 페이지 제목 | IP | 국가 | 등록일 | 최종 분석일 |\n|---|-----|-----------|----|----|------|----------|\n"
                 rows = ""
                 for idx, item in enumerate(page_items, start=start + 1):
                     url = (item.get("url") or "N/A").replace("|", "\\|")
                     title = (item.get("title") or "N/A").replace("|", "\\|")[:50]
                     ip = item.get("ip", "N/A")
                     country = item.get("country", "N/A")
+                    creation_date = item.get("creation_date", "N/A")
                     analysis_date = item.get("last_analysis_date", "N/A")
-                    rows += f"| {idx} | {url[:80]} | {title} | {ip} | {country} | {analysis_date} |\n"
+                    rows += f"| {idx} | {url[:80]} | {title} | {ip} | {country} | {creation_date} | {analysis_date} |\n"
                 st.markdown(header + rows)
 
                 # 페이지네이션 컨트롤

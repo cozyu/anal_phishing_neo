@@ -8,7 +8,7 @@ from config import get_config
 
 KST = timezone(timedelta(hours=9))
 
-st.title("\U0001F4CB 분석 이력")
+st.title("\U0001F4CB 결과 다시보기")
 
 st.markdown("""
 <style>
@@ -276,6 +276,57 @@ def _render_detail(category):
             st.info("결과가 없습니다.")
         return True
 
+    elif category == "keyword_monitor":
+        source = data.get("source", "")
+        source_label = "URLScan" if source == "urlscan" else "VirusTotal"
+        kw_data = data.get("data", {})
+        total_found = sum(v.get("total", 0) for v in kw_data.values())
+        st.markdown(f"**검색 소스**: {source_label} | **총 결과**: {total_found}건")
+
+        for kw_id, kw_info in kw_data.items():
+            keyword = kw_info.get("keyword", "N/A")
+            kw_total = kw_info.get("total", 0)
+            kw_results = kw_info.get("results", [])
+            error = kw_info.get("error")
+
+            st.markdown(f"#### {keyword} ({kw_total}건)")
+            if error:
+                st.error(f"오류: {error}")
+                continue
+            if not kw_results:
+                st.info("결과 없음")
+                continue
+
+            if source == "urlscan":
+                table_md = "| # | URL | 도메인 | 페이지 제목 | IP | 국가 | 등록일 | 스캔일시 |\n"
+                table_md += "|---|-----|--------|------------|----|----|------|--------|\n"
+                for idx, item in enumerate(kw_results, 1):
+                    page_info = item.get("page", {})
+                    task_info = item.get("task", {})
+                    url = _esc(page_info.get("url", "N/A"))[:60]
+                    domain = _esc(page_info.get("domain", "N/A"))
+                    title_text = _esc((page_info.get("title") or "N/A")[:50])
+                    ip = _esc(page_info.get("ip", "N/A"))
+                    country = _esc(page_info.get("country", "N/A"))
+                    creation_date = _esc(page_info.get("creation_date", "N/A"))
+                    scan_time = _to_kst(task_info.get("time", ""))
+                    table_md += f"| {idx} | {url} | {domain} | {title_text} | {ip} | {country} | {creation_date} | {scan_time} |\n"
+            else:
+                table_md = "| # | URL | 페이지 제목 | IP | 국가 | 등록일 | 최종 분석일 |\n"
+                table_md += "|---|-----|-----------|----|----|------|----------|\n"
+                for idx, item in enumerate(kw_results, 1):
+                    url = _esc((item.get("url") or "N/A"))[:80]
+                    title_text = _esc((item.get("title") or "N/A")[:50])
+                    ip = _esc(item.get("ip", "N/A"))
+                    country = _esc(item.get("country", "N/A"))
+                    creation_date = _esc(item.get("creation_date", "N/A"))
+                    analysis_date = _esc(item.get("last_analysis_date", "N/A"))
+                    table_md += f"| {idx} | {url} | {title_text} | {ip} | {country} | {creation_date} | {analysis_date} |\n"
+
+            st.markdown(f"<div class='history-table'>\n\n{table_md}\n\n</div>", unsafe_allow_html=True)
+
+        return True
+
     elif category == "domains":
         st.markdown(f"**키워드**: {data.get('keyword', 'N/A')}")
 
@@ -361,16 +412,17 @@ def _render_list(category):
 # --- 카테고리 선택 ---
 def _on_tab_change():
     """탭 전환 시 상세 보기 초기화"""
-    for _k in ["view_compare_id", "view_domains_id", "view_similar_id", "view_url_analysis_id", "view_bulk_scan_id"]:
+    for _k in ["view_compare_id", "view_domains_id", "view_similar_id", "view_url_analysis_id", "view_bulk_scan_id", "view_keyword_monitor_id"]:
         st.session_state.pop(_k, None)
 
 
 _CATEGORY_LABELS = {
-    "compare": "비교 분석",
-    "domains": "도메인 모니터링",
-    "similar": "유사 사이트 검색",
-    "url_analysis": "URL 분석",
-    "bulk_scan": "일괄 스캔",
+    "domains": "도메인 모니터링(Title)",
+    "keyword_monitor": "도메인 모니터링(URL)",
+    "similar": "유사 사이트 검색(DOM기반)",
+    "url_analysis": "피싱사이트 분석(자동분석)",
+    "compare": "피싱사이트 분석(수동분석)",
+    "bulk_scan": "피싱사이트 신고(URLScan)",
 }
 
 selected = st.radio(

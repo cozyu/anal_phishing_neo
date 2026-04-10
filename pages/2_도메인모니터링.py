@@ -7,7 +7,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "domains"
-st.title("\U0001F310 도메인 등록 모니터링")
+st.title("\U0001F310 도메인 모니터링(Title)")
 
 st.markdown("""
 <style>
