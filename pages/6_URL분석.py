@@ -6,7 +6,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "url_analysis"
-st.title("🎯 피싱사이트 분석(자동분석)")
+st.title("🎯 피싱사이트 분석(AI분석)")
 
 st.markdown("""
 <style>

@@ -8,7 +8,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "compare"
-st.title("\U0001F50D 피싱사이트 분석(수동분석)")
+st.title("\U0001F50D 피싱사이트 비교분석")
 
 st.markdown("""
 <style>

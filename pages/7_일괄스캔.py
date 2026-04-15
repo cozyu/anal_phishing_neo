@@ -7,7 +7,7 @@ from db import save_history
 from background import BackgroundTask, TaskQueue
 
 st.session_state["_current_page"] = "bulk_scan"
-st.title("📦 피싱사이트 분석(URLScan)")
+st.title("📦 피싱사이트 일괄분석")
 
 st.markdown("""
 <style>
@@ -105,14 +105,17 @@ def _bulk_scan_bg(urls, task=None):
     return save_data
 
 
-# 입력 폼
+# 입력 폼 (다른 페이지에서 전달된 URL 목록이 있으면 pre-fill)
+_prefill = st.session_state.pop("bulk_scan_urls", "")
+
 with st.form("bulk_scan_form"):
     url_text = st.text_area(
         "URL 목록 (한 줄에 하나씩)",
+        value=_prefill,
         placeholder="https://example1.com\nhttps://example2.com\nexample3.com",
         height=200,
     )
-    submitted = st.form_submit_button("스캔 시작")
+    submitted = st.form_submit_button("스캔 및 분석")
 
 if submitted and url_text.strip():
     raw_lines = url_text.strip().splitlines()

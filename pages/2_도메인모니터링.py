@@ -196,6 +196,13 @@ if "domain_results" in st.session_state:
 
         st.markdown(f"<div class='domain-table'>\n\n{table_md}\n\n</div>", unsafe_allow_html=True)
 
+        # 일괄분석 버튼
+        domain_urls = [f"https://{d['domain']}" for d in results if d.get("domain") and d.get("status") != "error"]
+        if domain_urls:
+            if st.button(f"일괄분석 ({len(domain_urls)}건)", key="btn_bulk_scan"):
+                st.session_state["bulk_scan_urls"] = "\n".join(domain_urls)
+                st.switch_page("pages/7_일괄스캔.py")
+
         if total_pages > 1:
             st.caption(f"페이지 {current_page + 1} / {total_pages} (총 {len(results)}건)")
             col_prev, _, col_next = st.columns([1, 2, 1])

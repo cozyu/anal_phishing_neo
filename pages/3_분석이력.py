@@ -438,9 +438,9 @@ _CATEGORY_LABELS = {
     "domains": "도메인 검색 및 모니터링(URL)",
     "keyword_monitor": "도메인 검색 및 모니터링(Title)",
     "similar": "유사 사이트 검색(DOM기반)",
-    "url_analysis": "피싱사이트 분석(자동분석)",
-    "compare": "피싱사이트 분석(수동분석)",
-    "bulk_scan": "피싱사이트 분석(URLScan)",
+    "url_analysis": "피싱사이트 분석(AI분석)",
+    "compare": "피싱사이트 비교분석",
+    "bulk_scan": "피싱사이트 일괄분석",
 }
 
 selected = st.radio(

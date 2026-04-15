@@ -115,7 +115,7 @@ def _resolve_domain_creation_dates(results_list, domain_key_fn, task=None, label
     def _lookup_one(domain):
         try:
             w = _whois.whois(domain)
-            creation_date = w.creation_date
+            creation_date = w.creation_date  # type: ignore[attr-defined]
             if isinstance(creation_date, list):
                 creation_date = creation_date[0]
             if creation_date:
@@ -241,21 +241,29 @@ def _render_vt_results(results, searched_at=None, page_key="kw_vt_page"):
 
 
 def _render_url_copy(results, url_fn, country_fn, key_prefix):
-    """URL 목록 복사 expander"""
+    """URL 목록 복사 expander + 일괄분석 버튼"""
+    # URL 목록 추출
+    seen_copy = set()
+    all_list, no_kr_list = [], []
+    for item in results:
+        raw = url_fn(item)
+        if not raw:
+            continue
+        stripped = _strip_url(raw)
+        if stripped in seen_copy:
+            continue
+        seen_copy.add(stripped)
+        all_list.append(stripped)
+        if (country_fn(item) or "").upper() != "KR":
+            no_kr_list.append(stripped)
+
+    # 일괄분석 버튼
+    if all_list:
+        if st.button(f"일괄분석 ({len(all_list)}건)", key=f"{key_prefix}_bulk"):
+            st.session_state["bulk_scan_urls"] = "\n".join(all_list)
+            st.switch_page("pages/7_일괄스캔.py")
+
     with st.expander("URL 목록 복사"):
-        seen_copy = set()
-        all_list, no_kr_list = [], []
-        for item in results:
-            raw = url_fn(item)
-            if not raw:
-                continue
-            stripped = _strip_url(raw)
-            if stripped in seen_copy:
-                continue
-            seen_copy.add(stripped)
-            all_list.append(stripped)
-            if (country_fn(item) or "").upper() != "KR":
-                no_kr_list.append(stripped)
         if all_list:
             st.markdown(f"**전체** ({len(all_list)}건)")
             st.code("\n".join(all_list), language=None)
@@ -403,7 +411,7 @@ with st.form("adhoc_search_form"):
     with col_src:
         adhoc_source = st.radio("검색 소스", ["VirusTotal", "URLScan"], horizontal=True, key="adhoc_src")
     with col_match:
-        adhoc_exact = st.checkbox("제목 정확 일치 (VT)", value=True, key="adhoc_exact")
+        adhoc_exact = st.checkbox("제목 정확 일치 (VT)", value=False, key="adhoc_exact")
     adhoc_submitted = st.form_submit_button("검색", disabled=queue.is_busy)
 
 if adhoc_submitted and adhoc_keyword.strip():
@@ -432,20 +440,20 @@ if "adhoc_result" in st.session_state:
             _render_urlscan_results(kw_results, page_key="adhoc_us_page")
         else:
             _render_vt_results(kw_results, page_key="adhoc_vt_page")
-
-        # 모니터링 등록 버튼
-        all_keywords = get_keywords(active_only=True)
-        existing_kw = next((kw for kw in all_keywords if kw["keyword"] == kw_text), None)
-        if existing_kw:
-            last_searched = _to_kst(existing_kw.get("last_searched_at"))
-            st.caption(f"'{kw_text}'는 이미 모니터링에 등록되어 있습니다. (최종 검색: {last_searched})")
-        else:
-            if st.button(f"'{kw_text}' 모니터링에 등록", type="primary"):
-                add_keyword(kw_text)
-                st.success(f"'{kw_text}' 모니터링 등록 완료")
-                st.rerun()
     else:
         st.info("검색 결과가 없습니다.")
+
+    # 모니터링 등록 버튼 (결과 유무와 무관하게 표시)
+    all_keywords = get_keywords(active_only=True)
+    existing_kw = next((kw for kw in all_keywords if kw["keyword"] == kw_text), None)
+    if existing_kw:
+        last_searched = _to_kst(existing_kw.get("last_searched_at"))
+        st.caption(f"'{kw_text}'는 이미 모니터링에 등록되어 있습니다. (최종 검색: {last_searched})")
+    else:
+        if st.button(f"'{kw_text}' 모니터링에 등록", type="primary"):
+            add_keyword(kw_text)
+            st.success(f"'{kw_text}' 모니터링 등록 완료")
+            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -528,7 +536,7 @@ if keywords:
     with st.form("research_form"):
         kw_names = [kw["keyword"] for kw in keywords]
         selected_kws = st.multiselect(
-            "검색할 키워드 선택", options=kw_names, default=kw_names,
+            "검색할 키워드 선택", options=kw_names,
         )
         col_mode, col_days = st.columns([2, 1])
         with col_mode:
@@ -551,8 +559,14 @@ if keywords:
                 horizontal=True, key="research_src",
             )
         with col_match:
-            research_exact = st.checkbox("제목 정확 일치 (VT)", value=True, key="research_exact")
-        research_submitted = st.form_submit_button("재검색", disabled=queue.is_busy)
+            research_exact = st.checkbox("제목 정확 일치 (VT)", value=False, key="research_exact")
+        research_submitted = st.form_submit_button(
+            "검색 중..." if queue.is_busy else "재검색",
+            disabled=queue.is_busy,
+        )
+
+    if queue.is_busy:
+        st.info("🔄 검색 중입니다. 잠시 기다려주세요...")
 
     if research_submitted and selected_kws and not queue.is_busy:
         selected_kw_objs = [kw for kw in keywords if kw["keyword"] in selected_kws]
@@ -587,18 +601,7 @@ if keywords:
 
     if selected_kw:
         selected_id = kw_options[selected_kw]
-        tab_urlscan, tab_vt = st.tabs(["\U0001F50D URLScan 결과", "\U0001F310 VirusTotal 결과"])
-
-        with tab_urlscan:
-            urlscan_data = get_latest_keyword_results(selected_id, "urlscan")
-            if urlscan_data and urlscan_data.get("results"):
-                _render_urlscan_results(
-                    urlscan_data["results"],
-                    searched_at=_to_kst(urlscan_data.get("searched_at")),
-                    page_key="kw_us_page",
-                )
-            else:
-                st.info("URLScan 검색 결과가 없습니다.")
+        tab_vt, tab_urlscan = st.tabs(["\U0001F310 VirusTotal 결과", "\U0001F50D URLScan 결과"])
 
         with tab_vt:
             vt_data = get_latest_keyword_results(selected_id, "virustotal")
@@ -610,6 +613,17 @@ if keywords:
                 )
             else:
                 st.info("VirusTotal 검색 결과가 없습니다.")
+
+        with tab_urlscan:
+            urlscan_data = get_latest_keyword_results(selected_id, "urlscan")
+            if urlscan_data and urlscan_data.get("results"):
+                _render_urlscan_results(
+                    urlscan_data["results"],
+                    searched_at=_to_kst(urlscan_data.get("searched_at")),
+                    page_key="kw_us_page",
+                )
+            else:
+                st.info("URLScan 검색 결과가 없습니다.")
 
 else:
     st.markdown("---")

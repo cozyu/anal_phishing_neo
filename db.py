@@ -118,7 +118,7 @@ def add_keyword(keyword):
     return record["id"]
 
 
-def get_keywords(active_only=True):
+def get_keywords(active_only=True) -> list[dict]:
     """키워드 목록 조회"""
     client = _get_client()
     if not client:
@@ -161,7 +161,7 @@ def save_keyword_results(keyword_id, keyword, source, total, results):
     return record["id"]
 
 
-def get_latest_keyword_results(keyword_id, source):
+def get_latest_keyword_results(keyword_id, source) -> dict | None:
     """source별 최신 검색 결과 조회"""
     client = _get_client()
     if not client:

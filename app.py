@@ -13,10 +13,10 @@ pg = st.navigation([
     st.Page("pages/0_home.py", title="PhishGuard", icon="\U0001F6E1\uFE0F", default=True),
     st.Page("pages/2_도메인모니터링.py", title="도메인 검색 및 모니터링(URL)", icon="\U0001F310"),
     st.Page("pages/5_키워드모니터링.py", title="도메인 검색 및 모니터링(Title)", icon="\U0001F511"),
+    st.Page("pages/6_URL분석.py", title="피싱사이트 분석(AI분석)", icon="\U0001F3AF"),
+    st.Page("pages/7_일괄스캔.py", title="피싱사이트 일괄분석", icon="\U0001F4E6"),
+    st.Page("pages/1_비교분석.py", title="피싱사이트 비교분석", icon="\U0001F50D"),
     st.Page("pages/4_유사사이트검색.py", title="유사사이트검색(DOM기반)", icon="\U0001F50E"),
-    st.Page("pages/6_URL분석.py", title="피싱사이트 분석(자동분석)", icon="\U0001F3AF"),
-    st.Page("pages/1_비교분석.py", title="피싱사이트 분석(수동분석)", icon="\U0001F50D"),
-    st.Page("pages/7_일괄스캔.py", title="피싱사이트 분석(URLScan)", icon="\U0001F4E6"),
     st.Page("pages/3_분석이력.py", title="결과 다시보기", icon="\U0001F4CB"),
 ])
 
