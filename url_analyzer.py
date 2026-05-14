@@ -20,6 +20,7 @@ from urlscan_client import (
     structure_search,
     search_hash_count,
     search_existing_scan,
+    get_dom_content,
 )
 from analyzer import extract_metadata, GEMINI_MODELS
 
@@ -159,6 +160,37 @@ def _collect_whois(domain):
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+def _collect_dom_content(urlscan_data):
+    """URLScan 결과에서 UUID를 추출하여 DOM 콘텐츠 조회"""
+    if not urlscan_data or urlscan_data.get("status") != "ok":
+        return None
+    scan_data = urlscan_data.get("data", {})
+    uuid = scan_data.get("task", {}).get("uuid")
+    if not uuid:
+        return None
+    try:
+        dom = get_dom_content(uuid)
+        if dom and len(dom) > 100:  # 너무 짧으면 의미 없음
+            return dom
+    except Exception as e:
+        log_error("url_analyzer.dom", str(e))
+    return None
+
+
+def _truncate_dom_for_prompt(dom_content, max_chars=15000):
+    """AI 프롬프트에 넣기 위해 DOM을 적절히 truncate"""
+    if not dom_content:
+        return ""
+    # 불필요한 공백 정리
+    import re
+    cleaned = re.sub(r'\s+', ' ', dom_content)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    # 앞부분(head + 초반 body)과 뒷부분(scripts 등)을 균형있게 포함
+    half = max_chars // 2
+    return cleaned[:half] + "\n... [중간 생략] ...\n" + cleaned[-half:]
 
 
 def _collect_ssl_san(domain):
@@ -684,6 +716,19 @@ def _generate_ai_report(collected, score, verdict, reasons, iocs, related, inves
                 h: c for h, c in list(investigation["hash_counts"].items())[:10]
             }
 
+    # DOM 콘텐츠 (페이지 콘텐츠 분석용)
+    dom_section = ""
+    dom_content = collected.get("dom_content")
+    if dom_content:
+        truncated_dom = _truncate_dom_for_prompt(dom_content, max_chars=15000)
+        dom_section = f"""
+## 페이지 DOM 콘텐츠 (HTML 소스)
+아래는 실제 페이지의 HTML 소스코드입니다. 이를 분석하여 악성 행위를 식별하세요.
+```html
+{truncated_dom}
+```
+"""
+
     prompt = f"""{prompt_config['system_role']}
 
 ## 분석 대상
@@ -698,7 +743,7 @@ URL: {collected.get('input_url', '')}
 ```json
 {json.dumps(summary_data, ensure_ascii=False, default=str)[:25000]}
 ```
-
+{dom_section}
 ## 보고서 섹션 구성
 {sections_text}
 
@@ -782,6 +827,10 @@ def analyze_url(url, auto_investigate=True, task=None):
     progress("Phase 1: SSL SAN 도메인 수집 중...")
     collected["ssl_san"] = _collect_ssl_san(domain)
 
+    # DOM 콘텐츠 수집
+    progress("Phase 1: 페이지 DOM 콘텐츠 수집 중...")
+    collected["dom_content"] = _collect_dom_content(collected.get("urlscan"))
+
     # ========== 위협 점수 산출 ==========
     progress("위협 점수 산출 중...")
     score, verdict, reasons = _calculate_threat_score(collected)
@@ -837,6 +886,7 @@ def analyze_url(url, auto_investigate=True, task=None):
         "investigation": investigation,
         "ai_report": ai_report,
         "ai_model": ai_model,
+        "dom_available": bool(collected.get("dom_content")),
         "collected": {
             "criminalip": _summarize_criminalip(collected.get("criminalip", {})),
             "urlscan": _summarize_urlscan(collected.get("urlscan", {})),

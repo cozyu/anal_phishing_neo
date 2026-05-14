@@ -90,17 +90,18 @@ def delete_history(category, history_id):
 # ── 키워드 모니터링 ──
 
 
-def add_keyword(keyword):
-    """키워드 등록 (중복 시 재활성화)"""
+def add_keyword(keyword, purpose="title"):
+    """키워드 등록 (중복 시 재활성화). purpose: 'url' | 'title'"""
     client = _get_client()
     if not client:
         return None
     keyword = keyword.strip()
-    # 기존 키워드 확인
+    # 기존 키워드 확인 (keyword + purpose 복합)
     existing = (
         client.table("keywords")
         .select("id, is_active")
         .eq("keyword", keyword)
+        .eq("purpose", purpose)
         .execute()
     )
     if existing.data:
@@ -111,6 +112,7 @@ def add_keyword(keyword):
     record = {
         "id": str(uuid.uuid4()),
         "keyword": keyword,
+        "purpose": purpose,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -118,14 +120,16 @@ def add_keyword(keyword):
     return record["id"]
 
 
-def get_keywords(active_only=True) -> list[dict]:
-    """키워드 목록 조회"""
+def get_keywords(active_only=True, purpose=None) -> list[dict]:
+    """키워드 목록 조회. purpose 지정 시 해당 용도로 필터링"""
     client = _get_client()
     if not client:
         return []
     q = client.table("keywords").select("*").order("created_at", desc=True)
     if active_only:
         q = q.eq("is_active", True)
+    if purpose:
+        q = q.eq("purpose", purpose)
     result = q.execute()
     return result.data
 
@@ -200,6 +204,28 @@ def get_seen_urls(keyword_id, source):
                 url = item.get("url", "")
             if url:
                 seen.add(url)
+    return seen
+
+
+def get_seen_domains(keyword_id, source):
+    """해당 키워드+소스의 이전 검색에서 발견된 모든 도메인 집합 반환"""
+    client = _get_client()
+    if not client:
+        return set()
+    result = (
+        client.table("keyword_results")
+        .select("results")
+        .eq("keyword_id", keyword_id)
+        .eq("source", source)
+        .order("searched_at", desc=True)
+        .execute()
+    )
+    seen = set()
+    for row in result.data:
+        for item in (row.get("results") or []):
+            domain = item.get("domain")
+            if domain:
+                seen.add(domain)
     return seen
 
 

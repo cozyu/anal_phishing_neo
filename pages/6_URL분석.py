@@ -472,6 +472,11 @@ def _render_ai_report(result):
     if model:
         st.caption(f"Gemini 모델: {model}")
 
+    if result.get("dom_available"):
+        st.caption("✅ 페이지 DOM 콘텐츠 분석 포함")
+    else:
+        st.caption("⚠️ DOM 콘텐츠를 수집하지 못해 메타데이터 기반으로 분석")
+
     if report:
         st.markdown(f'<div class="report-section">{report}</div>', unsafe_allow_html=True)
     else:

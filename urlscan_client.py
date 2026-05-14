@@ -181,6 +181,20 @@ def _extract_domain(url):
     return parsed.hostname or url
 
 
+def get_dom_content(scan_id):
+    """스캔 UUID로 DOM(HTML) 콘텐츠 조회"""
+    endpoint = f"https://urlscan.io/dom/{scan_id}/"
+    log_request("urlscan.dom", "GET", endpoint)
+    try:
+        resp = requests.get(endpoint, timeout=30)
+        log_response("urlscan.dom", resp.status_code, {"scan_id": scan_id, "length": len(resp.text) if resp.ok else 0})
+        if resp.ok:
+            return resp.text
+    except requests.RequestException as e:
+        log_error("urlscan.dom", f"scan_id={scan_id}, error={e}")
+    return None
+
+
 def scan_and_structure_search(url, threshold=75, size=100, q=None, progress_callback=None):
     """URL 스캔 후 Structure Search 수행. 스캔 실패 시 기존 결과로 폴백."""
     scan_id = None

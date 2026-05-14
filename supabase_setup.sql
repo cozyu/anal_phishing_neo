@@ -22,15 +22,25 @@ CREATE POLICY "Allow all operations" ON history
     WITH CHECK (true);
 
 -- 키워드 모니터링: 등록 키워드
+-- purpose: 'url' = 도메인 검색 및 모니터링(URL), 'title' = 도메인 검색 및 모니터링(Title)
 CREATE TABLE IF NOT EXISTS keywords (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    keyword TEXT NOT NULL UNIQUE,
+    keyword TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'title',
     is_active BOOLEAN DEFAULT true,
     last_searched_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (keyword, purpose)
 );
 
 CREATE INDEX IF NOT EXISTS idx_keywords_active ON keywords(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_keywords_purpose ON keywords(purpose);
+
+-- ── 마이그레이션 (기존 환경에서 이미 keywords 테이블이 있는 경우 한 번만 실행) ──
+-- ALTER TABLE keywords ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'title';
+-- ALTER TABLE keywords DROP CONSTRAINT IF EXISTS keywords_keyword_key;
+-- ALTER TABLE keywords ADD CONSTRAINT keywords_keyword_purpose_key UNIQUE (keyword, purpose);
+-- CREATE INDEX IF NOT EXISTS idx_keywords_purpose ON keywords(purpose);
 
 ALTER TABLE keywords ENABLE ROW LEVEL SECURITY;
 

@@ -6,3 +6,5 @@ history/
 logs/
 .streamlit/secrets.toml
 CLAUDE.md
+.playwright-mcp/
+report/

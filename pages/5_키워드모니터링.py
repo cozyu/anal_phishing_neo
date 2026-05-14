@@ -13,6 +13,8 @@ from urlscan_client import search_by_title
 from domain_monitor import search_urls_by_title as vt_search_urls_by_title
 from background import BackgroundTask, TaskQueue
 
+KEYWORD_PURPOSE = "title"
+
 st.session_state["_current_page"] = "keyword"
 st.title("\U0001F511 도메인 검색 및 모니터링(Title)")
 
@@ -444,15 +446,15 @@ if "adhoc_result" in st.session_state:
         st.info("검색 결과가 없습니다.")
 
     # 모니터링 등록 버튼 (결과 유무와 무관하게 표시)
-    all_keywords = get_keywords(active_only=True)
+    all_keywords = get_keywords(active_only=True, purpose=KEYWORD_PURPOSE)
     existing_kw = next((kw for kw in all_keywords if kw["keyword"] == kw_text), None)
     if existing_kw:
         last_searched = _to_kst(existing_kw.get("last_searched_at"))
-        st.caption(f"'{kw_text}'는 이미 모니터링에 등록되어 있습니다. (최종 검색: {last_searched})")
+        st.caption(f"'{kw_text}'는 이미 Title 모니터링에 등록되어 있습니다. (최종 검색: {last_searched})")
     else:
-        if st.button(f"'{kw_text}' 모니터링에 등록", type="primary"):
-            add_keyword(kw_text)
-            st.success(f"'{kw_text}' 모니터링 등록 완료")
+        if st.button(f"'{kw_text}' Title 모니터링에 등록", type="primary"):
+            add_keyword(kw_text, purpose=KEYWORD_PURPOSE)
+            st.success(f"'{kw_text}' Title 모니터링 등록 완료")
             st.rerun()
 
 
@@ -510,7 +512,7 @@ _queue_status()
 # 섹션 B: 등록된 키워드 관리 + 재검색
 # ══════════════════════════════════════════════════════════════
 
-keywords = get_keywords(active_only=True)
+keywords = get_keywords(active_only=True, purpose=KEYWORD_PURPOSE)
 
 if keywords:
     st.markdown("---")
