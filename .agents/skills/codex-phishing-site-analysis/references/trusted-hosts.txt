@@ -1,0 +1,49 @@
+# 신뢰 호스트 화이트리스트 (suffix 매칭)
+# - 정확 일치 또는 ".<entry>" 서브도메인 일치 모두 허용 (예: fonts.googleapis.com → 매칭)
+# - 분석을 거듭하면서 "이 호스트는 봐도 의미 없다" 싶은 정상 SaaS를 추가
+# - 사기 운영자가 실제로 악용 중인 SaaS는 절대 추가하지 말 것 (예: cloudflare.com은 정상 트래픽도 사기도 둘 다 통과)
+
+# 표준화/사양
+w3.org
+www.w3.org
+schema.org
+whatwg.org
+
+# 코드/오픈소스 호스팅 (페이지에서 단순 링크로 등장)
+github.com
+gitlab.com
+reactjs.org
+react.dev
+nextjs.org
+
+# 폰트
+fonts.googleapis.com
+fonts.gstatic.com
+use.typekit.net
+use.fontawesome.com
+
+# Google 정상 트래픽 (탐지가 아닌 신고 채널 식별에 사용)
+www.google-analytics.com
+www.googletagmanager.com
+www.google.com
+ssl.google-analytics.com
+
+# 광고/추적 — 단, 이 자체가 IOC가 될 수 있으므로 픽셀 ID는 별도로 기록
+www.facebook.com
+connect.facebook.net
+analytics.tiktok.com
+www.clarity.ms
+clarity.ms
+gum.criteo.com
+static.criteo.net
+
+# 메시지/소셜 (단순 링크 등장)
+telegram.org
+t.me
+twitter.com
+x.com
+
+# 한국 정상 SaaS (보통 신뢰 가능, 단 케이스별 확인)
+# naver.com
+# kakao.com
+# tossbank.com

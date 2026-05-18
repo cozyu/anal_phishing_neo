@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Phishing Site Analysis"
+  short_description: "Safe phishing-site analysis reports"
+  default_prompt: "Use $codex-phishing-site-analysis to analyze this suspicious URL and generate a reproducible evidence-backed report."
